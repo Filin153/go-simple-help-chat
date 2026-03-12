@@ -5,9 +5,9 @@ import (
 	"errors"
 	"shc/domain"
 	"shc/internal/service"
-	"strconv"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -16,19 +16,22 @@ type MainRepo interface {
 }
 
 type UserRepo interface {
-	GetByID(ctx context.Context, id int, tx *pgx.Tx) (*domain.User, error)
+	GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
+	UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx *pgx.Tx) error
+	Create(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error
+	CreateClient(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error
 }
 
 type RefreshTokenRepo interface {
 	Get(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
-	Create(ctx context.Context, jti string, userID int, tx *pgx.Tx) error
-	DeleteByUserID(ctx context.Context, userID int, tx *pgx.Tx) error
+	Create(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error
+	DeleteByUserUUID(ctx context.Context, userUUID string, tx *pgx.Tx) error
 	DeleteByJTI(ctx context.Context, jti string, tx *pgx.Tx) error
 }
 
 type JWTService interface {
-	CreateTokens(sub int, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error)
+	CreateTokens(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error)
 	VerifyAccessToken(tokenStr string) (*service.AccessTokenClaims, error)
 	VerifyRefreshToken(tokenStr string) (*service.RefreshTokenClaims, error)
 }
@@ -39,7 +42,7 @@ type PswdService interface {
 }
 
 type OtherSystemLogin interface {
-	Login(ctx context.Context, args ...string) (userInfo map[any]any, err error)
+	Login(ctx context.Context, args ...any) (userUUID string, userInfo map[any]any, err error)
 }
 
 type RoleScopes map[domain.UserRole][]string
@@ -69,16 +72,81 @@ func NewAuthUseCase(roleScopes RoleScopes, accessTokenTTL, refreshTokenTTL time.
 	}
 }
 
-func (a *AuthUseCase) LoginClient(ctx context.Context, args ...string) (*domain.JWTTokens, error) {
+func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error) {
 	if a.otherSystemLogin == nil {
 		return nil, errors.New("other system login is not configured")
 	}
 
-	if _, err := a.otherSystemLogin.Login(ctx, args...); err != nil {
+	userUUID, userInfo, err := a.otherSystemLogin.Login(ctx, args...)
+	if err != nil {
 		return nil, err
 	}
 
-	return nil, errors.New("login client is not implemented")
+	tx, err := a.mainRepo.CreateSession(ctx, pgx.TxOptions{})
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback(ctx)
+
+	pswd, err := a.pswdService.CreatePasswordHash(uuid.NewString())
+	if err != nil {
+		return nil, err
+	}
+
+	user, err := a.userRepo.GetByUUID(ctx, userUUID, &tx)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		createUser := domain.CreateUser{
+			Login:    "client_" + uuid.NewString(),
+			Password: pswd,
+			Role:     domain.UserRoleClient,
+		}
+
+		if err := a.userRepo.Create(ctx, createUser, &tx); err != nil {
+			return nil, err
+		}
+
+		createClient := domain.CreateClient{
+			UserUUID: userUUID,
+			Info:     userInfo,
+		}
+
+		if err := a.userRepo.CreateClient(ctx, createClient, &tx); err != nil {
+			return nil, err
+		}
+
+		user = &domain.User{
+			UUID:     userUUID,
+			Login:    createUser.Login,
+			Password: pswd,
+			Role:     domain.UserRoleClient,
+		}
+	} else if err != nil {
+		return nil, err
+	} else {
+		if err := a.userRepo.UpdateUserPasswordByUUID(ctx, user.UUID, pswd, &tx); err != nil {
+			return nil, err
+		}
+	}
+
+	tokens, refJTI, err := a.jwtService.CreateTokens(user.UUID, user.Role, a.roleScopes[user.Role], a.accessTokenTTL, a.refreshTokenTTL)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, &tx); err != nil {
+		return nil, err
+	}
+
+	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, &tx); err != nil {
+		return nil, err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+
+	return tokens, nil
 }
 
 func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domain.JWTTokens, error) {
@@ -97,16 +165,16 @@ func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domai
 		return nil, domain.ErrLogin
 	}
 
-	tokens, refJTI, err := a.jwtService.CreateTokens(user.ID, user.Role, a.roleScopes[user.Role], a.accessTokenTTL, a.refreshTokenTTL)
+	tokens, refJTI, err := a.jwtService.CreateTokens(user.UUID, user.Role, a.roleScopes[user.Role], a.accessTokenTTL, a.refreshTokenTTL)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.DeleteByUserID(ctx, user.ID, &tx); err != nil {
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, &tx); err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.ID, &tx); err != nil {
+	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, &tx); err != nil {
 		return nil, err
 	}
 
@@ -123,12 +191,7 @@ func (a *AuthUseCase) Logout(ctx context.Context, accessToken string) error {
 		return err
 	}
 
-	userID, err := strconv.Atoi(token.Subject)
-	if err != nil {
-		return err
-	}
-
-	if err := a.refreshTokenRepo.DeleteByUserID(ctx, userID, nil); err != nil {
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, token.Subject, nil); err != nil {
 		return err
 	}
 
@@ -156,21 +219,21 @@ func (a *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*domain
 		return nil, err
 	}
 
-	user, err := a.userRepo.GetByID(ctx, refFromDB.UserID, &tx)
+	user, err := a.userRepo.GetByUUID(ctx, refFromDB.UserUUID, &tx)
 	if err != nil {
 		return nil, domain.ErrLogin
 	}
 
-	tokens, refJTI, err := a.jwtService.CreateTokens(user.ID, user.Role, a.roleScopes[user.Role], a.accessTokenTTL, a.refreshTokenTTL)
+	tokens, refJTI, err := a.jwtService.CreateTokens(user.UUID, user.Role, a.roleScopes[user.Role], a.accessTokenTTL, a.refreshTokenTTL)
 	if err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.DeleteByUserID(ctx, user.ID, &tx); err != nil {
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, &tx); err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.ID, &tx); err != nil {
+	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, &tx); err != nil {
 		return nil, err
 	}
 

@@ -3,7 +3,6 @@ package service
 import (
 	"fmt"
 	"shc/domain"
-	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -41,7 +40,7 @@ func NewJWT(issuer string, sig []byte) *JWT {
 }
 
 // return: JWTTokens(accessToken and refreshToken), JTI(refreshToken ID), error
-func (j *JWT) CreateTokens(sub int, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error) {
+func (j *JWT) CreateTokens(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error) {
 	var act, rft string
 	act, err = j.createAccessToken(sub, userRole, scope, accessTokenTTL)
 	if err != nil {
@@ -111,7 +110,7 @@ func (j *JWT) VerifyRefreshToken(tokenStr string) (*RefreshTokenClaims, error) {
 	return claims, nil
 }
 
-func (j *JWT) createAccessToken(sub int, userRole domain.UserRole, scope []string, ttl time.Duration) (string, error) {
+func (j *JWT) createAccessToken(sub string, userRole domain.UserRole, scope []string, ttl time.Duration) (string, error) {
 	claims := AccessTokenClaims{
 		userRole,
 		scope,
@@ -120,7 +119,7 @@ func (j *JWT) createAccessToken(sub int, userRole domain.UserRole, scope []strin
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			NotBefore: jwt.NewNumericDate(time.Now()),
 			Issuer:    j.issuer,
-			Subject:   strconv.Itoa(sub),
+			Subject:   sub,
 		},
 	}
 

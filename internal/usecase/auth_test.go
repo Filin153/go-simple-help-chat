@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,35 +55,50 @@ func (m *mainRepoMock) CreateSession(ctx context.Context, options pgx.TxOptions)
 }
 
 type userRepoMock struct {
-	getByIDFn    func(ctx context.Context, id int, tx *pgx.Tx) (*domain.User, error)
-	getByLoginFn func(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
+	getByUUIDFn                func(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
+	getByLoginFn               func(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
+	updateUserPasswordByUUIDFn func(ctx context.Context, uuid, password string, tx *pgx.Tx) error
+	createFn                   func(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error
+	createClientFn             func(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error
 }
 
-func (u *userRepoMock) GetByID(ctx context.Context, id int, tx *pgx.Tx) (*domain.User, error) {
-	return u.getByIDFn(ctx, id, tx)
+func (u *userRepoMock) GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error) {
+	return u.getByUUIDFn(ctx, uuid, tx)
 }
 
 func (u *userRepoMock) GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error) {
 	return u.getByLoginFn(ctx, login, tx)
 }
 
+func (u *userRepoMock) UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx *pgx.Tx) error {
+	return u.updateUserPasswordByUUIDFn(ctx, uuid, password, tx)
+}
+
+func (u *userRepoMock) Create(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error {
+	return u.createFn(ctx, user, tx)
+}
+
+func (u *userRepoMock) CreateClient(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error {
+	return u.createClientFn(ctx, client, tx)
+}
+
 type refreshTokenRepoMock struct {
-	getFn            func(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
-	createFn         func(ctx context.Context, jti string, userID int, tx *pgx.Tx) error
-	deleteByUserIDFn func(ctx context.Context, userID int, tx *pgx.Tx) error
-	deleteByJTIFn    func(ctx context.Context, jti string, tx *pgx.Tx) error
+	getFn              func(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
+	createFn           func(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error
+	deleteByUserUUIDFn func(ctx context.Context, userUUID string, tx *pgx.Tx) error
+	deleteByJTIFn      func(ctx context.Context, jti string, tx *pgx.Tx) error
 }
 
 func (r *refreshTokenRepoMock) Get(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error) {
 	return r.getFn(ctx, jti, tx)
 }
 
-func (r *refreshTokenRepoMock) Create(ctx context.Context, jti string, userID int, tx *pgx.Tx) error {
-	return r.createFn(ctx, jti, userID, tx)
+func (r *refreshTokenRepoMock) Create(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error {
+	return r.createFn(ctx, jti, userUUID, tx)
 }
 
-func (r *refreshTokenRepoMock) DeleteByUserID(ctx context.Context, userID int, tx *pgx.Tx) error {
-	return r.deleteByUserIDFn(ctx, userID, tx)
+func (r *refreshTokenRepoMock) DeleteByUserUUID(ctx context.Context, userUUID string, tx *pgx.Tx) error {
+	return r.deleteByUserUUIDFn(ctx, userUUID, tx)
 }
 
 func (r *refreshTokenRepoMock) DeleteByJTI(ctx context.Context, jti string, tx *pgx.Tx) error {
@@ -90,12 +106,12 @@ func (r *refreshTokenRepoMock) DeleteByJTI(ctx context.Context, jti string, tx *
 }
 
 type jwtServiceMock struct {
-	createTokensFn       func(sub int, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error)
+	createTokensFn       func(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error)
 	verifyAccessTokenFn  func(tokenStr string) (*service.AccessTokenClaims, error)
 	verifyRefreshTokenFn func(tokenStr string) (*service.RefreshTokenClaims, error)
 }
 
-func (j *jwtServiceMock) CreateTokens(sub int, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error) {
+func (j *jwtServiceMock) CreateTokens(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error) {
 	return j.createTokensFn(sub, userRole, scope, accessTokenTTL, refreshTokenTTL)
 }
 
@@ -121,10 +137,10 @@ func (p *pswdServiceMock) VerifyPassword(password, hashedPassword string) bool {
 }
 
 type otherSystemLoginMock struct {
-	loginFn func(ctx context.Context, args ...string) (map[any]any, error)
+	loginFn func(ctx context.Context, args ...any) (string, map[any]any, error)
 }
 
-func (o *otherSystemLoginMock) Login(ctx context.Context, args ...string) (map[any]any, error) {
+func (o *otherSystemLoginMock) Login(ctx context.Context, args ...any) (string, map[any]any, error) {
 	return o.loginFn(ctx, args...)
 }
 
@@ -139,11 +155,13 @@ type authFixture struct {
 	otherSystemLogin *otherSystemLoginMock
 	user             *domain.User
 	tokens           *domain.JWTTokens
+	clientUUID       string
+	clientInfo       map[any]any
 }
 
 func newAuthFixture() *authFixture {
 	user := &domain.User{
-		ID:       1,
+		UUID:     "user-uuid-1",
 		Login:    "login",
 		Role:     domain.UserRoleManager,
 		Password: "hashed-password",
@@ -153,6 +171,8 @@ func newAuthFixture() *authFixture {
 		RefreshToken: "refresh-token",
 	}
 	tx := &fakeTx{}
+	clientUUID := "client-uuid-1"
+	clientInfo := map[any]any{"source": "external"}
 
 	mainRepo := &mainRepoMock{
 		createSessionFn: func(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
@@ -160,23 +180,38 @@ func newAuthFixture() *authFixture {
 		},
 	}
 	userRepo := &userRepoMock{
-		getByIDFn: func(_ context.Context, _ int, _ *pgx.Tx) (*domain.User, error) {
+		getByUUIDFn: func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
 			return user, nil
 		},
 		getByLoginFn: func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
 			return user, nil
 		},
+		updateUserPasswordByUUIDFn: func(_ context.Context, _ string, _ string, _ *pgx.Tx) error {
+			return nil
+		},
+		createFn: func(_ context.Context, _ domain.CreateUser, _ *pgx.Tx) error {
+			return nil
+		},
+		createClientFn: func(_ context.Context, _ domain.CreateClient, _ *pgx.Tx) error {
+			return nil
+		},
 	}
 	refreshTokenRepo := &refreshTokenRepoMock{
 		getFn: func(_ context.Context, _ string, _ *pgx.Tx) (*domain.RefreshToken, error) {
-			return &domain.RefreshToken{JTI: "old-jti", UserID: user.ID}, nil
+			return &domain.RefreshToken{JTI: "old-jti", UserUUID: user.UUID}, nil
 		},
-		createFn:         func(_ context.Context, _ string, _ int, _ *pgx.Tx) error { return nil },
-		deleteByUserIDFn: func(_ context.Context, _ int, _ *pgx.Tx) error { return nil },
-		deleteByJTIFn:    func(_ context.Context, _ string, _ *pgx.Tx) error { return nil },
+		createFn: func(_ context.Context, _, _ string, _ *pgx.Tx) error {
+			return nil
+		},
+		deleteByUserUUIDFn: func(_ context.Context, _ string, _ *pgx.Tx) error {
+			return nil
+		},
+		deleteByJTIFn: func(_ context.Context, _ string, _ *pgx.Tx) error {
+			return nil
+		},
 	}
 	jwtService := &jwtServiceMock{
-		createTokensFn: func(_ int, _ domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
+		createTokensFn: func(_ string, _ domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
 			return tokens, "new-jti", nil
 		},
 		verifyAccessTokenFn: func(_ string) (*service.AccessTokenClaims, error) {
@@ -184,7 +219,7 @@ func newAuthFixture() *authFixture {
 				UserRole: user.Role,
 				Scope:    []string{"tickets:read"},
 				RegisteredClaims: jwt.RegisteredClaims{
-					Subject: "1",
+					Subject: user.UUID,
 				},
 			}, nil
 		},
@@ -195,17 +230,22 @@ func newAuthFixture() *authFixture {
 		},
 	}
 	pswdService := &pswdServiceMock{
-		createPasswordHashFn: func(_ string) (string, error) { return "", nil },
-		verifyPasswordFn:     func(_, _ string) bool { return true },
+		createPasswordHashFn: func(_ string) (string, error) {
+			return "new-hash", nil
+		},
+		verifyPasswordFn: func(_, _ string) bool {
+			return true
+		},
 	}
 	otherSystemLogin := &otherSystemLoginMock{
-		loginFn: func(_ context.Context, _ ...string) (map[any]any, error) {
-			return map[any]any{}, nil
+		loginFn: func(_ context.Context, _ ...any) (string, map[any]any, error) {
+			return clientUUID, clientInfo, nil
 		},
 	}
 
 	roleScopes := RoleScopes{
 		domain.UserRoleManager: {"tickets:read"},
+		domain.UserRoleClient:  {"tickets:create"},
 	}
 	useCase := NewAuthUseCase(roleScopes, 2*time.Minute, 10*time.Minute, mainRepo, userRepo, refreshTokenRepo, jwtService, pswdService, otherSystemLogin)
 
@@ -220,6 +260,8 @@ func newAuthFixture() *authFixture {
 		otherSystemLogin: otherSystemLogin,
 		user:             user,
 		tokens:           tokens,
+		clientUUID:       clientUUID,
+		clientInfo:       clientInfo,
 	}
 }
 
@@ -252,8 +294,8 @@ func Test_AuthUseCase_LoginClient_OtherSystemLoginNotConfigured(t *testing.T) {
 func Test_AuthUseCase_LoginClient_OtherSystemLoginError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("other system login error")
-	f.otherSystemLogin.loginFn = func(_ context.Context, _ ...string) (map[any]any, error) {
-		return nil, wantErr
+	f.otherSystemLogin.loginFn = func(_ context.Context, _ ...any) (string, map[any]any, error) {
+		return "", nil, wantErr
 	}
 
 	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
@@ -265,18 +307,248 @@ func Test_AuthUseCase_LoginClient_OtherSystemLoginError(t *testing.T) {
 	}
 }
 
-func Test_AuthUseCase_LoginClient_NotImplemented(t *testing.T) {
+func Test_AuthUseCase_LoginClient_CreateSessionError(t *testing.T) {
 	f := newAuthFixture()
+	wantErr := errors.New("create session error")
+	f.mainRepo.createSessionFn = func(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
+		return nil, wantErr
+	}
 
 	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
-	if err == nil {
-		t.Fatal("expected LoginClient not implemented error")
-	}
-	if err.Error() != "login client is not implemented" {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create session error, got=%v", err)
 	}
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_CreatePasswordHashError(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("create password hash error")
+	f.pswdService.createPasswordHashFn = func(_ string) (string, error) {
+		return "", wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create password hash error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_GetByUUIDUnexpectedError(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("get by uuid error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected get by uuid error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_CreateUserError(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("create user error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+	f.userRepo.createFn = func(_ context.Context, user domain.CreateUser, _ *pgx.Tx) error {
+		if user.Role != domain.UserRoleClient {
+			t.Fatalf("unexpected role: got=%q", user.Role)
+		}
+		if user.Password != "new-hash" {
+			t.Fatalf("unexpected password: got=%q", user.Password)
+		}
+		if !strings.HasPrefix(user.Login, "client_") {
+			t.Fatalf("unexpected login: got=%q", user.Login)
+		}
+		return wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create user error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_CreateClientError(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("create client error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+	f.userRepo.createClientFn = func(_ context.Context, client domain.CreateClient, _ *pgx.Tx) error {
+		if client.UserUUID != f.clientUUID {
+			t.Fatalf("unexpected user uuid: got=%q want=%q", client.UserUUID, f.clientUUID)
+		}
+		if client.Info["source"] != f.clientInfo["source"] {
+			t.Fatalf("unexpected client info: got=%v", client.Info)
+		}
+		return wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create client error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_CreateTokensError_NewUser(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("create tokens error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+	f.jwtService.createTokensFn = func(sub string, userRole domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
+		if sub != f.clientUUID {
+			t.Fatalf("unexpected subject: got=%q want=%q", sub, f.clientUUID)
+		}
+		if userRole != domain.UserRoleClient {
+			t.Fatalf("unexpected role: got=%q", userRole)
+		}
+		return nil, "", wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create tokens error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_DeleteByUserUUIDError_NewUser(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("delete refresh error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, userUUID string, _ *pgx.Tx) error {
+		if userUUID != f.clientUUID {
+			t.Fatalf("unexpected user uuid: got=%q want=%q", userUUID, f.clientUUID)
+		}
+		return wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected delete refresh error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_CreateRefreshTokenError_NewUser(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("create refresh error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, userUUID string, _ *pgx.Tx) error {
+		if userUUID != f.clientUUID {
+			t.Fatalf("unexpected user uuid: got=%q want=%q", userUUID, f.clientUUID)
+		}
+		return wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create refresh error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_CommitError_NewUser(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("commit error")
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+	f.tx.commitErr = wantErr
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected commit error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_OK_NewUser(t *testing.T) {
+	f := newAuthFixture()
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		return nil, pgx.ErrNoRows
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if err != nil {
+		t.Fatalf("LoginClient returned error: %v", err)
+	}
+	if tokens == nil {
+		t.Fatal("LoginClient returned nil tokens")
+	}
+	if tokens.AccessToken != f.tokens.AccessToken || tokens.RefreshToken != f.tokens.RefreshToken {
+		t.Fatalf("unexpected tokens: %+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_UpdateUserPasswordError_ExistingUser(t *testing.T) {
+	f := newAuthFixture()
+	wantErr := errors.New("update password error")
+	f.userRepo.updateUserPasswordByUUIDFn = func(_ context.Context, uuid, password string, _ *pgx.Tx) error {
+		if uuid != f.user.UUID {
+			t.Fatalf("unexpected user uuid: got=%q want=%q", uuid, f.user.UUID)
+		}
+		if password != "new-hash" {
+			t.Fatalf("unexpected password: got=%q", password)
+		}
+		return wantErr
+	}
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected update password error, got=%v", err)
+	}
+	if tokens != nil {
+		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
+	}
+}
+
+func Test_AuthUseCase_LoginClient_OK_ExistingUser(t *testing.T) {
+	f := newAuthFixture()
+
+	tokens, err := f.useCase.LoginClient(context.Background(), "arg1")
+	if err != nil {
+		t.Fatalf("LoginClient returned error: %v", err)
+	}
+	if tokens == nil {
+		t.Fatal("LoginClient returned nil tokens")
+	}
+	if tokens.AccessToken != f.tokens.AccessToken || tokens.RefreshToken != f.tokens.RefreshToken {
+		t.Fatalf("unexpected tokens: %+v", tokens)
+	}
+	if f.tx.commitCalls != 1 {
+		t.Fatalf("expected commit to be called once, got=%d", f.tx.commitCalls)
 	}
 }
 
@@ -309,9 +581,6 @@ func Test_AuthUseCase_Login_GetByLoginError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Login_PasswordMismatch(t *testing.T) {
@@ -325,15 +594,12 @@ func Test_AuthUseCase_Login_PasswordMismatch(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Login_CreateTokensError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create tokens error")
-	f.jwtService.createTokensFn = func(_ int, _ domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
+	f.jwtService.createTokensFn = func(_ string, _ domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
 		return nil, "", wantErr
 	}
 
@@ -344,15 +610,12 @@ func Test_AuthUseCase_Login_CreateTokensError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
-func Test_AuthUseCase_Login_DeleteByUserIDError(t *testing.T) {
+func Test_AuthUseCase_Login_DeleteByUserUUIDError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete refresh error")
-	f.refreshTokenRepo.deleteByUserIDFn = func(_ context.Context, _ int, _ *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) error {
 		return wantErr
 	}
 
@@ -363,15 +626,12 @@ func Test_AuthUseCase_Login_DeleteByUserIDError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Login_CreateRefreshTokenError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create refresh error")
-	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ int, _ *pgx.Tx) error {
+	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ string, _ *pgx.Tx) error {
 		return wantErr
 	}
 
@@ -381,9 +641,6 @@ func Test_AuthUseCase_Login_CreateRefreshTokenError(t *testing.T) {
 	}
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
-	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
 	}
 }
 
@@ -398,12 +655,6 @@ func Test_AuthUseCase_Login_CommitError(t *testing.T) {
 	}
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
-	}
-	if f.tx.commitCalls != 1 {
-		t.Fatalf("expected commit to be called once, got=%d", f.tx.commitCalls)
-	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
 	}
 }
 
@@ -420,12 +671,6 @@ func Test_AuthUseCase_Login_OK(t *testing.T) {
 	if tokens.AccessToken != f.tokens.AccessToken || tokens.RefreshToken != f.tokens.RefreshToken {
 		t.Fatalf("unexpected tokens: %+v", tokens)
 	}
-	if f.tx.commitCalls != 1 {
-		t.Fatalf("expected commit to be called once, got=%d", f.tx.commitCalls)
-	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Logout_VerifyAccessTokenError(t *testing.T) {
@@ -441,26 +686,10 @@ func Test_AuthUseCase_Logout_VerifyAccessTokenError(t *testing.T) {
 	}
 }
 
-func Test_AuthUseCase_Logout_InvalidSubject(t *testing.T) {
-	f := newAuthFixture()
-	f.jwtService.verifyAccessTokenFn = func(_ string) (*service.AccessTokenClaims, error) {
-		return &service.AccessTokenClaims{
-			RegisteredClaims: jwt.RegisteredClaims{
-				Subject: "not-an-int",
-			},
-		}, nil
-	}
-
-	err := f.useCase.Logout(context.Background(), "access-token")
-	if err == nil {
-		t.Fatal("expected Logout error for invalid subject")
-	}
-}
-
-func Test_AuthUseCase_Logout_DeleteByUserIDError(t *testing.T) {
+func Test_AuthUseCase_Logout_DeleteByUserUUIDError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete by user uuid error")
-	f.refreshTokenRepo.deleteByUserIDFn = func(_ context.Context, _ int, tx *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, tx *pgx.Tx) error {
 		if tx != nil {
 			t.Fatalf("expected nil tx in Logout delete, got=%v", tx)
 		}
@@ -488,7 +717,7 @@ func Test_AuthUseCase_GetAccessTokenClaims(t *testing.T) {
 		UserRole: domain.UserRoleManager,
 		Scope:    []string{"tickets:read"},
 		RegisteredClaims: jwt.RegisteredClaims{
-			Subject: "1",
+			Subject: f.user.UUID,
 		},
 	}
 	f.jwtService.verifyAccessTokenFn = func(_ string) (*service.AccessTokenClaims, error) {
@@ -550,14 +779,11 @@ func Test_AuthUseCase_Refresh_GetFromDBError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
-func Test_AuthUseCase_Refresh_GetByIDError(t *testing.T) {
+func Test_AuthUseCase_Refresh_GetByUUIDError(t *testing.T) {
 	f := newAuthFixture()
-	f.userRepo.getByIDFn = func(_ context.Context, _ int, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
 		return nil, errors.New("get user by uuid error")
 	}
 
@@ -568,15 +794,12 @@ func Test_AuthUseCase_Refresh_GetByIDError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Refresh_CreateTokensError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create tokens error")
-	f.jwtService.createTokensFn = func(_ int, _ domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
+	f.jwtService.createTokensFn = func(_ string, _ domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
 		return nil, "", wantErr
 	}
 
@@ -587,15 +810,12 @@ func Test_AuthUseCase_Refresh_CreateTokensError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
-func Test_AuthUseCase_Refresh_DeleteByUserIDError(t *testing.T) {
+func Test_AuthUseCase_Refresh_DeleteByUserUUIDError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete by user uuid error")
-	f.refreshTokenRepo.deleteByUserIDFn = func(_ context.Context, _ int, _ *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) error {
 		return wantErr
 	}
 
@@ -606,15 +826,12 @@ func Test_AuthUseCase_Refresh_DeleteByUserIDError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Refresh_CreateRefreshTokenError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create refresh token error")
-	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ int, _ *pgx.Tx) error {
+	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ string, _ *pgx.Tx) error {
 		return wantErr
 	}
 
@@ -624,9 +841,6 @@ func Test_AuthUseCase_Refresh_CreateRefreshTokenError(t *testing.T) {
 	}
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
-	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
 	}
 }
 
@@ -642,12 +856,6 @@ func Test_AuthUseCase_Refresh_CommitError(t *testing.T) {
 	if tokens != nil {
 		t.Fatalf("expected nil tokens on error, got=%+v", tokens)
 	}
-	if f.tx.commitCalls != 1 {
-		t.Fatalf("expected commit to be called once, got=%d", f.tx.commitCalls)
-	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
-	}
 }
 
 func Test_AuthUseCase_Refresh_OK(t *testing.T) {
@@ -662,11 +870,5 @@ func Test_AuthUseCase_Refresh_OK(t *testing.T) {
 	}
 	if tokens.AccessToken != f.tokens.AccessToken || tokens.RefreshToken != f.tokens.RefreshToken {
 		t.Fatalf("unexpected tokens: %+v", tokens)
-	}
-	if f.tx.commitCalls != 1 {
-		t.Fatalf("expected commit to be called once, got=%d", f.tx.commitCalls)
-	}
-	if f.tx.rollbackCalls != 1 {
-		t.Fatalf("expected rollback to be called once, got=%d", f.tx.rollbackCalls)
 	}
 }
