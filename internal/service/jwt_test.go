@@ -42,7 +42,7 @@ func Test_JWT_CreateTokens_OK(t *testing.T) {
 	j := NewJWT("issuer", []byte("signature-key"))
 	scope := []string{"tickets:read", "tickets:write"}
 
-	tokens, jti, err := j.CreateTokens("user-uuid", domain.UserRoleManager, scope, time.Minute, time.Hour)
+	tokens, jti, err := j.CreateTokens(1, domain.UserRoleManager, scope, time.Minute, time.Hour)
 	if err != nil {
 		t.Fatalf("CreateTokens returned error: %v", err)
 	}
@@ -66,8 +66,8 @@ func Test_JWT_CreateTokens_OK(t *testing.T) {
 	if parsedAccessToken == nil {
 		t.Fatal("VerifyAccessToken returned nil claims")
 	}
-	if parsedAccessToken.Subject != "user-uuid" {
-		t.Fatalf("subject mismatch; got=%q want=%q", parsedAccessToken.Subject, "user-uuid")
+	if parsedAccessToken.Subject != "1" {
+		t.Fatalf("subject mismatch; got=%q want=%q", parsedAccessToken.Subject, "1")
 	}
 	if parsedAccessToken.Issuer != "issuer" {
 		t.Fatalf("issuer mismatch; got=%q want=%q", parsedAccessToken.Issuer, "issuer")
@@ -120,7 +120,7 @@ func Test_JWT_CreateTokens_AccessSignError(t *testing.T) {
 	}
 
 	j := NewJWT("issuer", []byte("signature-key"))
-	tokens, jti, err := j.CreateTokens("user-uuid", domain.UserRoleAdmin, []string{"a"}, time.Minute, time.Hour)
+	tokens, jti, err := j.CreateTokens(1, domain.UserRoleAdmin, []string{"a"}, time.Minute, time.Hour)
 	if err == nil {
 		t.Fatal("CreateTokens must return error when access signing fails")
 	}
@@ -149,7 +149,7 @@ func Test_JWT_CreateTokens_RefreshSignError(t *testing.T) {
 	}
 
 	j := NewJWT("issuer", []byte("signature-key"))
-	tokens, jti, err := j.CreateTokens("user-uuid", domain.UserRoleClient, []string{"a"}, time.Minute, time.Hour)
+	tokens, jti, err := j.CreateTokens(1, domain.UserRoleClient, []string{"a"}, time.Minute, time.Hour)
 	if err == nil {
 		t.Fatal("CreateTokens must return error when refresh signing fails")
 	}

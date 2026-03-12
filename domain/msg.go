@@ -22,16 +22,17 @@ type CreateMsgFromManager struct {
 }
 
 type MsgFileContent struct {
-	ID      int    `db:"id" json:"id"`
-	MsgUUID string `db:"msg_uuid" json:"msg_uuid"`
-	URL     string `db:"url" json:"url"`
+	ID    int    `db:"id" json:"id"`
+	MsgID int    `db:"msg_id" json:"msg_id"`
+	Path  string `db:"path" json:"path"`
 }
 
 type Msg struct {
-	UUID     string           `db:"uuid" json:"uuid"`
-	TicketID int              `db:"ticket_id" json:"ticket_id"`
+	ID       int              `db:"id" json:"id"`
 	FromType MsgFromType      `db:"from_type" json:"from_type"`
 	Text     string           `db:"text" json:"text"`
+	TicketID int              `db:"ticket_id" json:"ticket_id"`
+	Read     bool             `db:"read" json:"read"`
 	CreateAt time.Time        `db:"create_at" json:"create_at"`
 	Files    []MsgFileContent `json:"files"`
 	Ticket   Ticket           `json:"ticket"`

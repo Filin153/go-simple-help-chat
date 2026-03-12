@@ -1,6 +1,6 @@
 package domain
 
 type RefreshToken struct {
-	JTI      string `db:"jti"`
-	UserUUID string `db:"user_uuid"`
+	JTI    string `db:"jti"`
+	UserID int    `db:"user_id"`
 }

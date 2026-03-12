@@ -40,12 +40,13 @@ func (c *CreateScheduleBreak) ValidateTime() error {
 }
 
 type Schedule struct {
-	ID       int          `db:"id" json:"id"`
-	Name     string       `db:"name" json:"name"`
-	From     string       `db:"from" json:"from"`
-	To       string       `db:"to" json:"to"`
-	Type     ScheduleType `db:"type" json:"type"`
-	DayID    int          `db:"day_id" json:"day_id,omitempty"`
-	IsDayOff bool         `db:"is_day_off" json:"is_day_off"`
-	Breaks   []Schedule   `db:"-" json:"breaks,omitempty"`
+	ID           int          `db:"id" json:"id"`
+	DepartmentID int          `db:"department_id" json:"department_id"`
+	Name         string       `db:"name" json:"name"`
+	From         string       `db:"from" json:"from"`
+	To           string       `db:"to" json:"to"`
+	Type         ScheduleType `db:"type" json:"type"`
+	DayID        int          `db:"day_id" json:"day_id,omitempty"`
+	IsDayOff     bool         `db:"is_day_off" json:"is_day_off"`
+	Breaks       []Schedule   `db:"-" json:"breaks,omitempty"`
 }
