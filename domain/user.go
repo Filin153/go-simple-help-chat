@@ -14,6 +14,12 @@ type CreateUser struct {
 	Role     UserRole
 }
 
+type UpdateUser struct {
+	Login    string
+	Password string `json:"password"`
+	Role     UserRole
+}
+
 type User struct {
 	UUID     string   `db:"uuid" json:"uuid"`
 	Login    string   `db:"login" json:"login"`

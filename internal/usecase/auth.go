@@ -11,11 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-type MainRepo interface {
-	CreateSession(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
-}
-
-type UserRepo interface {
+type AuthUserRepo interface {
 	GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
 	UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx *pgx.Tx) error
@@ -23,25 +19,25 @@ type UserRepo interface {
 	CreateClient(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error
 }
 
-type RefreshTokenRepo interface {
+type AuthRefreshTokenRepo interface {
 	Get(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
 	Create(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error
 	DeleteByUserUUID(ctx context.Context, userUUID string, tx *pgx.Tx) error
 	DeleteByJTI(ctx context.Context, jti string, tx *pgx.Tx) error
 }
 
-type JWTService interface {
+type AuthJWTService interface {
 	CreateTokens(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error)
 	VerifyAccessToken(tokenStr string) (*service.AccessTokenClaims, error)
 	VerifyRefreshToken(tokenStr string) (*service.RefreshTokenClaims, error)
 }
 
-type PswdService interface {
+type AuthPswdService interface {
 	CreatePasswordHash(password string) (string, error)
 	VerifyPassword(password, hashedPassword string) bool
 }
 
-type OtherSystemLogin interface {
+type AuthOtherSystemLogin interface {
 	Login(ctx context.Context, args ...any) (userUUID string, userInfo map[any]any, err error)
 }
 
@@ -51,14 +47,14 @@ type AuthUseCase struct {
 	roleScopes                      RoleScopes
 	accessTokenTTL, refreshTokenTTL time.Duration
 	mainRepo                        MainRepo
-	userRepo                        UserRepo
-	refreshTokenRepo                RefreshTokenRepo
-	jwtService                      JWTService
-	pswdService                     PswdService
-	otherSystemLogin                OtherSystemLogin
+	userRepo                        AuthUserRepo
+	refreshTokenRepo                AuthRefreshTokenRepo
+	jwtService                      AuthJWTService
+	pswdService                     AuthPswdService
+	otherSystemLogin                AuthOtherSystemLogin
 }
 
-func NewAuthUseCase(roleScopes RoleScopes, accessTokenTTL, refreshTokenTTL time.Duration, mainRepo MainRepo, userRepo UserRepo, refreshTokenRepo RefreshTokenRepo, jwtService JWTService, pswdService PswdService, otherSystemLogin OtherSystemLogin) *AuthUseCase {
+func NewAuthUseCase(roleScopes RoleScopes, accessTokenTTL, refreshTokenTTL time.Duration, mainRepo MainRepo, userRepo AuthUserRepo, refreshTokenRepo AuthRefreshTokenRepo, jwtService AuthJWTService, pswdService AuthPswdService, otherSystemLogin AuthOtherSystemLogin) *AuthUseCase {
 	return &AuthUseCase{
 		roleScopes:       roleScopes,
 		accessTokenTTL:   accessTokenTTL,
