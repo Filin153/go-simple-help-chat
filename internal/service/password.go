@@ -11,6 +11,7 @@ var (
 	comparePasswordAndHash = argon2id.ComparePasswordAndHash
 )
 
+// CreatePasswordHash builds an Argon2id hash for the password.
 func CreatePasswordHash(password string) (string, error) {
 	hash, err := createHash(password, argon2id.DefaultParams)
 	if err != nil {
@@ -20,6 +21,7 @@ func CreatePasswordHash(password string) (string, error) {
 	return hash, nil
 }
 
+// VerifyPassword checks that the password matches the stored hash.
 func VerifyPassword(password, hashedPassword string) bool {
 	match, err := comparePasswordAndHash(password, hashedPassword)
 	if err != nil {

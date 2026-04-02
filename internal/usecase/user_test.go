@@ -242,29 +242,28 @@ func Test_UserUseCase_Create_OK(t *testing.T) {
 	}
 }
 
-func Test_UserUseCase_Create_WithoutPassword(t *testing.T) {
+func Test_UserUseCase_Create_ShortPassword(t *testing.T) {
 	f := newUserFixture()
 	hashCalled := false
 	f.pswdService.createPasswordHashFn = func(_ string) (string, error) {
 		hashCalled = true
 		return "", nil
 	}
-	f.userRepo.createFn = func(_ context.Context, user domain.CreateUser, tx *pgx.Tx) error {
-		if tx != nil {
-			t.Fatal("expected nil tx")
-		}
-		if user.Password != "" {
-			t.Fatalf("expected empty password, got=%q", user.Password)
-		}
+	repoCalled := false
+	f.userRepo.createFn = func(_ context.Context, _ domain.CreateUser, _ *pgx.Tx) error {
+		repoCalled = true
 		return nil
 	}
 
-	err := f.useCase.Create(context.Background(), domain.CreateUser{Login: "login", Password: "", Role: domain.UserRoleClient})
-	if err != nil {
-		t.Fatalf("Create returned error: %v", err)
+	err := f.useCase.Create(context.Background(), domain.CreateUser{Login: "login", Password: "12345", Role: domain.UserRoleClient})
+	if !errors.Is(err, domain.ErrShortPassword) {
+		t.Fatalf("expected short password error, got=%v", err)
 	}
 	if hashCalled {
-		t.Fatal("password hash must not be called for empty password")
+		t.Fatal("password hash must not be called for short password")
+	}
+	if repoCalled {
+		t.Fatal("repo Create must not be called for short password")
 	}
 }
 
@@ -343,6 +342,31 @@ func Test_UserUseCase_UpdateByUUID_WithoutPassword(t *testing.T) {
 	}
 	if hashCalled {
 		t.Fatal("password hash must not be called for empty password")
+	}
+}
+
+func Test_UserUseCase_UpdateByUUID_ShortPassword(t *testing.T) {
+	f := newUserFixture()
+	hashCalled := false
+	f.pswdService.createPasswordHashFn = func(_ string) (string, error) {
+		hashCalled = true
+		return "", nil
+	}
+	repoCalled := false
+	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, _ domain.UpdateUser, _ *pgx.Tx) error {
+		repoCalled = true
+		return nil
+	}
+
+	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{Login: "login", Password: "12345", Role: domain.UserRoleClient})
+	if !errors.Is(err, domain.ErrShortPassword) {
+		t.Fatalf("expected short password error, got=%v", err)
+	}
+	if hashCalled {
+		t.Fatal("password hash must not be called for short password")
+	}
+	if repoCalled {
+		t.Fatal("repo UpdateByUUID must not be called for short password")
 	}
 }
 

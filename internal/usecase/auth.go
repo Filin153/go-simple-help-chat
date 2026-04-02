@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
+// AuthUserRepo provides user persistence for auth flows.
 type AuthUserRepo interface {
 	GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
@@ -19,6 +20,7 @@ type AuthUserRepo interface {
 	CreateClient(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error
 }
 
+// AuthRefreshTokenRepo stores refresh tokens.
 type AuthRefreshTokenRepo interface {
 	Get(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
 	Create(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error
@@ -26,23 +28,28 @@ type AuthRefreshTokenRepo interface {
 	DeleteByJTI(ctx context.Context, jti string, tx *pgx.Tx) error
 }
 
+// AuthJWTService creates and validates JWT tokens.
 type AuthJWTService interface {
 	CreateTokens(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error)
 	VerifyAccessToken(tokenStr string) (*service.AccessTokenClaims, error)
 	VerifyRefreshToken(tokenStr string) (*service.RefreshTokenClaims, error)
 }
 
+// AuthPswdService hashes and verifies passwords.
 type AuthPswdService interface {
 	CreatePasswordHash(password string) (string, error)
 	VerifyPassword(password, hashedPassword string) bool
 }
 
+// AuthOtherSystemLogin authenticates a client in an external system.
 type AuthOtherSystemLogin interface {
 	Login(ctx context.Context, args ...any) (userUUID string, userInfo map[any]any, err error)
 }
 
+// RoleScopes maps a role to allowed token scopes.
 type RoleScopes map[domain.UserRole][]string
 
+// AuthUseCase handles authentication and token lifecycle.
 type AuthUseCase struct {
 	roleScopes                      RoleScopes
 	accessTokenTTL, refreshTokenTTL time.Duration
@@ -54,6 +61,7 @@ type AuthUseCase struct {
 	otherSystemLogin                AuthOtherSystemLogin
 }
 
+// NewAuthUseCase builds an AuthUseCase with required dependencies.
 func NewAuthUseCase(roleScopes RoleScopes, accessTokenTTL, refreshTokenTTL time.Duration, mainRepo MainRepo, userRepo AuthUserRepo, refreshTokenRepo AuthRefreshTokenRepo, jwtService AuthJWTService, pswdService AuthPswdService, otherSystemLogin AuthOtherSystemLogin) *AuthUseCase {
 	return &AuthUseCase{
 		roleScopes:       roleScopes,
@@ -68,6 +76,7 @@ func NewAuthUseCase(roleScopes RoleScopes, accessTokenTTL, refreshTokenTTL time.
 	}
 }
 
+// LoginClient logs in a client through an external system.
 func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error) {
 	if a.otherSystemLogin == nil {
 		return nil, errors.New("other system login is not configured")
@@ -145,6 +154,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 	return tokens, nil
 }
 
+// Login authenticates a user by login and password.
 func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domain.JWTTokens, error) {
 	tx, err := a.mainRepo.CreateSession(ctx, pgx.TxOptions{})
 	if err != nil {
@@ -181,6 +191,7 @@ func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domai
 	return tokens, nil
 }
 
+// Logout revokes refresh tokens for the access token subject.
 func (a *AuthUseCase) Logout(ctx context.Context, accessToken string) error {
 	token, err := a.jwtService.VerifyAccessToken(accessToken)
 	if err != nil {
@@ -194,10 +205,12 @@ func (a *AuthUseCase) Logout(ctx context.Context, accessToken string) error {
 	return nil
 }
 
+// GetAccessTokenClaims returns validated access token claims.
 func (a *AuthUseCase) GetAccessTokenClaims(accessToken string) (*service.AccessTokenClaims, error) {
 	return a.jwtService.VerifyAccessToken(accessToken)
 }
 
+// Refresh exchanges a refresh token for a new token pair.
 func (a *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error) {
 	token, err := a.jwtService.VerifyRefreshToken(refreshToken)
 	if err != nil {

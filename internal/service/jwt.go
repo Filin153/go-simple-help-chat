@@ -16,22 +16,26 @@ var (
 	}
 )
 
+// AccessTokenClaims stores access token payload.
 type AccessTokenClaims struct {
 	UserRole domain.UserRole
 	Scope    []string
 	jwt.RegisteredClaims
 }
 
+// RefreshTokenClaims stores refresh token payload.
 type RefreshTokenClaims struct {
 	JTI string
 	jwt.RegisteredClaims
 }
 
+// JWT signs and verifies access and refresh tokens.
 type JWT struct {
 	issuer string
 	sig    []byte
 }
 
+// NewJWT creates a JWT service with issuer and signing key.
 func NewJWT(issuer string, sig []byte) *JWT {
 	return &JWT{
 		issuer: issuer,
@@ -39,7 +43,7 @@ func NewJWT(issuer string, sig []byte) *JWT {
 	}
 }
 
-// return: JWTTokens(accessToken and refreshToken), JTI(refreshToken ID), error
+// CreateTokens returns a pair of signed tokens and refresh token JTI.
 func (j *JWT) CreateTokens(sub string, userRole domain.UserRole, scope []string, accessTokenTTL, refreshTokenTTL time.Duration) (tokens *domain.JWTTokens, refJTI string, err error) {
 	var act, rft string
 	act, err = j.createAccessToken(sub, userRole, scope, accessTokenTTL)
@@ -60,6 +64,7 @@ func (j *JWT) CreateTokens(sub string, userRole domain.UserRole, scope []string,
 	return tokens, refJTI, nil
 }
 
+// VerifyAccessToken validates an access token and returns its claims.
 func (j *JWT) VerifyAccessToken(tokenStr string) (*AccessTokenClaims, error) {
 	tok, err := parseWithClaims(
 		tokenStr,
@@ -85,6 +90,7 @@ func (j *JWT) VerifyAccessToken(tokenStr string) (*AccessTokenClaims, error) {
 	return claims, nil
 }
 
+// VerifyRefreshToken validates a refresh token and returns its claims.
 func (j *JWT) VerifyRefreshToken(tokenStr string) (*RefreshTokenClaims, error) {
 	tok, err := parseWithClaims(
 		tokenStr,
