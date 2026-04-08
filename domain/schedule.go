@@ -4,27 +4,39 @@ import (
 	"time"
 )
 
-type CreateScheduleBreak struct {
-	Name      string    `json:"name" validate:"required,max=10"`
-	From      time.Time `json:"from" validate:"required"`
-	To        time.Time `json:"to" validate:"required"`
-	IsBreak   bool      `json:"is_break"`
-	IsWeekEnd bool      `json:"is_week_end"`
+type EditSchedule struct {
+	Create []CreateSchedule `json:"create"`
+	Update []UpdateSchedule `json:"update"`
+	Delete []int            `json:"delete"`
 }
 
-func (c *CreateScheduleBreak) Validate() error {
-	if c.IsBreak && c.IsWeekEnd {
-		return ErrInvalidDayType
-	}
-	return nil
+type CreateSchedule struct {
+	DepartmentID int       `json:"department_id" validate:"required"`
+	Name         string    `json:"name" validate:"required"`
+	WorkFrom     time.Time `json:"work_from" validate:"required"`
+	WorkTo       time.Time `json:"work_to" validate:"required"`
+	BreakFrom    time.Time `json:"break_from" validate:"required"`
+	BreakTo      time.Time `json:"break_to" validate:"required"`
+	IsWeekEnd    bool      `json:"is_week_end"`
+}
+
+type UpdateSchedule struct {
+	ID        int       `json:"id" validate:"required"`
+	Name      string    `json:"name"`
+	WorkFrom  time.Time `json:"work_from"`
+	WorkTo    time.Time `json:"work_to"`
+	BreakFrom time.Time `json:"break_from"`
+	BreakTo   time.Time `json:"break_to"`
+	IsWeekEnd bool      `json:"is_week_end"`
 }
 
 type Schedule struct {
 	ID           int       `db:"id" json:"id"`
 	DepartmentID int       `db:"department_id" json:"department_id"`
 	Name         string    `db:"name" json:"name"`
-	From         time.Time `db:"from" json:"from"`
-	To           time.Time `db:"to" json:"to"`
-	IsBreak      bool      `db:"is_break" json:"is_break"`
+	WorkFrom     time.Time `db:"work_from" json:"work_from"`
+	WorkTo       time.Time `db:"work_to" json:"work_to"`
+	BreakFrom    time.Time `db:"break_from" json:"break_from"`
+	BreakTo      time.Time `db:"break_to" json:"break_to"`
 	IsWeekEnd    bool      `db:"is_week_end" json:"is_week_end"`
 }

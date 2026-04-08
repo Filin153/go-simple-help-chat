@@ -9,12 +9,12 @@ import (
 
 // UserRepo provides user CRUD operations.
 type UserRepo interface {
-	GetAll(ctx context.Context, tx *pgx.Tx) ([]domain.User, error)
-	GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
-	GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
-	Create(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error
-	UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx *pgx.Tx) error
-	DeleteByUUID(ctx context.Context, uuid string, tx *pgx.Tx) error
+	GetAll(ctx context.Context, tx pgx.Tx) ([]domain.User, error)
+	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
+	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
+	Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
+	UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error
+	DeleteByUUID(ctx context.Context, uuid string, tx pgx.Tx) error
 }
 
 // UserPswdService hashes user passwords.
@@ -24,15 +24,13 @@ type UserPswdService interface {
 
 // UserUseCase handles user management operations.
 type UserUseCase struct {
-	mainRepo    MainRepo
 	userRepo    UserRepo
 	pswdService UserPswdService
 }
 
 // NewUserUseCase builds a UserUseCase with required dependencies.
-func NewUserUseCase(mainRepo MainRepo, userRepo UserRepo, pswdService UserPswdService) *UserUseCase {
+func NewUserUseCase(userRepo UserRepo, pswdService UserPswdService) *UserUseCase {
 	return &UserUseCase{
-		mainRepo:    mainRepo,
 		userRepo:    userRepo,
 		pswdService: pswdService,
 	}

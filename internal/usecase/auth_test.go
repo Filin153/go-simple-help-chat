@@ -55,53 +55,53 @@ func (m *mainRepoMock) CreateSession(ctx context.Context, options pgx.TxOptions)
 }
 
 type userRepoMock struct {
-	getByUUIDFn                func(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
-	getByLoginFn               func(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
-	updateUserPasswordByUUIDFn func(ctx context.Context, uuid, password string, tx *pgx.Tx) error
-	createFn                   func(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error
-	createClientFn             func(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error
+	getByUUIDFn                func(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
+	getByLoginFn               func(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
+	updateUserPasswordByUUIDFn func(ctx context.Context, uuid, password string, tx pgx.Tx) error
+	createFn                   func(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
+	createClientFn             func(ctx context.Context, client domain.CreateClient, tx pgx.Tx) error
 }
 
-func (u *userRepoMock) GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error) {
+func (u *userRepoMock) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error) {
 	return u.getByUUIDFn(ctx, uuid, tx)
 }
 
-func (u *userRepoMock) GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error) {
+func (u *userRepoMock) GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error) {
 	return u.getByLoginFn(ctx, login, tx)
 }
 
-func (u *userRepoMock) UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx *pgx.Tx) error {
+func (u *userRepoMock) UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx pgx.Tx) error {
 	return u.updateUserPasswordByUUIDFn(ctx, uuid, password, tx)
 }
 
-func (u *userRepoMock) Create(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error {
+func (u *userRepoMock) Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error {
 	return u.createFn(ctx, user, tx)
 }
 
-func (u *userRepoMock) CreateClient(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error {
+func (u *userRepoMock) CreateClient(ctx context.Context, client domain.CreateClient, tx pgx.Tx) error {
 	return u.createClientFn(ctx, client, tx)
 }
 
 type refreshTokenRepoMock struct {
-	getFn              func(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
-	createFn           func(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error
-	deleteByUserUUIDFn func(ctx context.Context, userUUID string, tx *pgx.Tx) error
-	deleteByJTIFn      func(ctx context.Context, jti string, tx *pgx.Tx) error
+	getFn              func(ctx context.Context, jti string, tx pgx.Tx) (*domain.RefreshToken, error)
+	createFn           func(ctx context.Context, jti, userUUID string, tx pgx.Tx) error
+	deleteByUserUUIDFn func(ctx context.Context, userUUID string, tx pgx.Tx) error
+	deleteByJTIFn      func(ctx context.Context, jti string, tx pgx.Tx) error
 }
 
-func (r *refreshTokenRepoMock) Get(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error) {
+func (r *refreshTokenRepoMock) Get(ctx context.Context, jti string, tx pgx.Tx) (*domain.RefreshToken, error) {
 	return r.getFn(ctx, jti, tx)
 }
 
-func (r *refreshTokenRepoMock) Create(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error {
+func (r *refreshTokenRepoMock) Create(ctx context.Context, jti, userUUID string, tx pgx.Tx) error {
 	return r.createFn(ctx, jti, userUUID, tx)
 }
 
-func (r *refreshTokenRepoMock) DeleteByUserUUID(ctx context.Context, userUUID string, tx *pgx.Tx) error {
+func (r *refreshTokenRepoMock) DeleteByUserUUID(ctx context.Context, userUUID string, tx pgx.Tx) error {
 	return r.deleteByUserUUIDFn(ctx, userUUID, tx)
 }
 
-func (r *refreshTokenRepoMock) DeleteByJTI(ctx context.Context, jti string, tx *pgx.Tx) error {
+func (r *refreshTokenRepoMock) DeleteByJTI(ctx context.Context, jti string, tx pgx.Tx) error {
 	return r.deleteByJTIFn(ctx, jti, tx)
 }
 
@@ -180,33 +180,33 @@ func newAuthFixture() *authFixture {
 		},
 	}
 	userRepo := &userRepoMock{
-		getByUUIDFn: func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		getByUUIDFn: func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 			return user, nil
 		},
-		getByLoginFn: func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+		getByLoginFn: func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 			return user, nil
 		},
-		updateUserPasswordByUUIDFn: func(_ context.Context, _ string, _ string, _ *pgx.Tx) error {
+		updateUserPasswordByUUIDFn: func(_ context.Context, _ string, _ string, _ pgx.Tx) error {
 			return nil
 		},
-		createFn: func(_ context.Context, _ domain.CreateUser, _ *pgx.Tx) error {
+		createFn: func(_ context.Context, _ domain.CreateUser, _ pgx.Tx) error {
 			return nil
 		},
-		createClientFn: func(_ context.Context, _ domain.CreateClient, _ *pgx.Tx) error {
+		createClientFn: func(_ context.Context, _ domain.CreateClient, _ pgx.Tx) error {
 			return nil
 		},
 	}
 	refreshTokenRepo := &refreshTokenRepoMock{
-		getFn: func(_ context.Context, _ string, _ *pgx.Tx) (*domain.RefreshToken, error) {
+		getFn: func(_ context.Context, _ string, _ pgx.Tx) (*domain.RefreshToken, error) {
 			return &domain.RefreshToken{JTI: "old-jti", UserUUID: user.UUID}, nil
 		},
-		createFn: func(_ context.Context, _, _ string, _ *pgx.Tx) error {
+		createFn: func(_ context.Context, _, _ string, _ pgx.Tx) error {
 			return nil
 		},
-		deleteByUserUUIDFn: func(_ context.Context, _ string, _ *pgx.Tx) error {
+		deleteByUserUUIDFn: func(_ context.Context, _ string, _ pgx.Tx) error {
 			return nil
 		},
-		deleteByJTIFn: func(_ context.Context, _ string, _ *pgx.Tx) error {
+		deleteByJTIFn: func(_ context.Context, _ string, _ pgx.Tx) error {
 			return nil
 		},
 	}
@@ -342,7 +342,7 @@ func Test_AuthUseCase_LoginClient_CreatePasswordHashError(t *testing.T) {
 func Test_AuthUseCase_LoginClient_GetByUUIDUnexpectedError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("get by uuid error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, wantErr
 	}
 
@@ -358,10 +358,10 @@ func Test_AuthUseCase_LoginClient_GetByUUIDUnexpectedError(t *testing.T) {
 func Test_AuthUseCase_LoginClient_CreateUserError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create user error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
-	f.userRepo.createFn = func(_ context.Context, user domain.CreateUser, _ *pgx.Tx) error {
+	f.userRepo.createFn = func(_ context.Context, user domain.CreateUser, _ pgx.Tx) error {
 		if user.Role != domain.UserRoleClient {
 			t.Fatalf("unexpected role: got=%q", user.Role)
 		}
@@ -386,10 +386,10 @@ func Test_AuthUseCase_LoginClient_CreateUserError(t *testing.T) {
 func Test_AuthUseCase_LoginClient_CreateClientError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create client error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
-	f.userRepo.createClientFn = func(_ context.Context, client domain.CreateClient, _ *pgx.Tx) error {
+	f.userRepo.createClientFn = func(_ context.Context, client domain.CreateClient, _ pgx.Tx) error {
 		if client.UserUUID != f.clientUUID {
 			t.Fatalf("unexpected user uuid: got=%q want=%q", client.UserUUID, f.clientUUID)
 		}
@@ -411,7 +411,7 @@ func Test_AuthUseCase_LoginClient_CreateClientError(t *testing.T) {
 func Test_AuthUseCase_LoginClient_CreateTokensError_NewUser(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create tokens error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
 	f.jwtService.createTokensFn = func(sub string, userRole domain.UserRole, _ []string, _, _ time.Duration) (*domain.JWTTokens, string, error) {
@@ -436,10 +436,10 @@ func Test_AuthUseCase_LoginClient_CreateTokensError_NewUser(t *testing.T) {
 func Test_AuthUseCase_LoginClient_DeleteByUserUUIDError_NewUser(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete refresh error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
-	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, userUUID string, _ *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, userUUID string, _ pgx.Tx) error {
 		if userUUID != f.clientUUID {
 			t.Fatalf("unexpected user uuid: got=%q want=%q", userUUID, f.clientUUID)
 		}
@@ -458,10 +458,10 @@ func Test_AuthUseCase_LoginClient_DeleteByUserUUIDError_NewUser(t *testing.T) {
 func Test_AuthUseCase_LoginClient_CreateRefreshTokenError_NewUser(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create refresh error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
-	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, userUUID string, _ *pgx.Tx) error {
+	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, userUUID string, _ pgx.Tx) error {
 		if userUUID != f.clientUUID {
 			t.Fatalf("unexpected user uuid: got=%q want=%q", userUUID, f.clientUUID)
 		}
@@ -480,7 +480,7 @@ func Test_AuthUseCase_LoginClient_CreateRefreshTokenError_NewUser(t *testing.T) 
 func Test_AuthUseCase_LoginClient_CommitError_NewUser(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("commit error")
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
 	f.tx.commitErr = wantErr
@@ -496,7 +496,7 @@ func Test_AuthUseCase_LoginClient_CommitError_NewUser(t *testing.T) {
 
 func Test_AuthUseCase_LoginClient_OK_NewUser(t *testing.T) {
 	f := newAuthFixture()
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, pgx.ErrNoRows
 	}
 
@@ -515,7 +515,7 @@ func Test_AuthUseCase_LoginClient_OK_NewUser(t *testing.T) {
 func Test_AuthUseCase_LoginClient_UpdateUserPasswordError_ExistingUser(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("update password error")
-	f.userRepo.updateUserPasswordByUUIDFn = func(_ context.Context, uuid, password string, _ *pgx.Tx) error {
+	f.userRepo.updateUserPasswordByUUIDFn = func(_ context.Context, uuid, password string, _ pgx.Tx) error {
 		if uuid != f.user.UUID {
 			t.Fatalf("unexpected user uuid: got=%q want=%q", uuid, f.user.UUID)
 		}
@@ -570,7 +570,7 @@ func Test_AuthUseCase_Login_CreateSessionError(t *testing.T) {
 
 func Test_AuthUseCase_Login_GetByLoginError(t *testing.T) {
 	f := newAuthFixture()
-	f.userRepo.getByLoginFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByLoginFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, errors.New("db error")
 	}
 
@@ -615,7 +615,7 @@ func Test_AuthUseCase_Login_CreateTokensError(t *testing.T) {
 func Test_AuthUseCase_Login_DeleteByUserUUIDError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete refresh error")
-	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) error {
 		return wantErr
 	}
 
@@ -631,7 +631,7 @@ func Test_AuthUseCase_Login_DeleteByUserUUIDError(t *testing.T) {
 func Test_AuthUseCase_Login_CreateRefreshTokenError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create refresh error")
-	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ string, _ *pgx.Tx) error {
+	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ string, _ pgx.Tx) error {
 		return wantErr
 	}
 
@@ -689,7 +689,7 @@ func Test_AuthUseCase_Logout_VerifyAccessTokenError(t *testing.T) {
 func Test_AuthUseCase_Logout_DeleteByUserUUIDError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete by user uuid error")
-	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, tx *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, tx pgx.Tx) error {
 		if tx != nil {
 			t.Fatalf("expected nil tx in Logout delete, got=%v", tx)
 		}
@@ -768,7 +768,7 @@ func Test_AuthUseCase_Refresh_CreateSessionError(t *testing.T) {
 func Test_AuthUseCase_Refresh_GetFromDBError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("get refresh from db error")
-	f.refreshTokenRepo.getFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.RefreshToken, error) {
+	f.refreshTokenRepo.getFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.RefreshToken, error) {
 		return nil, wantErr
 	}
 
@@ -783,7 +783,7 @@ func Test_AuthUseCase_Refresh_GetFromDBError(t *testing.T) {
 
 func Test_AuthUseCase_Refresh_GetByUUIDError(t *testing.T) {
 	f := newAuthFixture()
-	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) (*domain.User, error) {
+	f.userRepo.getByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) (*domain.User, error) {
 		return nil, errors.New("get user by uuid error")
 	}
 
@@ -815,7 +815,7 @@ func Test_AuthUseCase_Refresh_CreateTokensError(t *testing.T) {
 func Test_AuthUseCase_Refresh_DeleteByUserUUIDError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("delete by user uuid error")
-	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) error {
+	f.refreshTokenRepo.deleteByUserUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) error {
 		return wantErr
 	}
 
@@ -831,7 +831,7 @@ func Test_AuthUseCase_Refresh_DeleteByUserUUIDError(t *testing.T) {
 func Test_AuthUseCase_Refresh_CreateRefreshTokenError(t *testing.T) {
 	f := newAuthFixture()
 	wantErr := errors.New("create refresh token error")
-	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ string, _ *pgx.Tx) error {
+	f.refreshTokenRepo.createFn = func(_ context.Context, _ string, _ string, _ pgx.Tx) error {
 		return wantErr
 	}
 

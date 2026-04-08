@@ -19,35 +19,35 @@ func (m *userMainRepoMock) CreateSession(ctx context.Context, options pgx.TxOpti
 }
 
 type userCRUDRepoMock struct {
-	getAllFn       func(ctx context.Context, tx *pgx.Tx) ([]domain.User, error)
-	getByUUIDFn    func(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
-	getByLoginFn   func(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
-	createFn       func(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error
-	updateByUUIDFn func(ctx context.Context, uuid string, user domain.UpdateUser, tx *pgx.Tx) error
-	deleteByUUIDFn func(ctx context.Context, uuid string, tx *pgx.Tx) error
+	getAllFn       func(ctx context.Context, tx pgx.Tx) ([]domain.User, error)
+	getByUUIDFn    func(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
+	getByLoginFn   func(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
+	createFn       func(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
+	updateByUUIDFn func(ctx context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error
+	deleteByUUIDFn func(ctx context.Context, uuid string, tx pgx.Tx) error
 }
 
-func (r *userCRUDRepoMock) GetAll(ctx context.Context, tx *pgx.Tx) ([]domain.User, error) {
+func (r *userCRUDRepoMock) GetAll(ctx context.Context, tx pgx.Tx) ([]domain.User, error) {
 	return r.getAllFn(ctx, tx)
 }
 
-func (r *userCRUDRepoMock) GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error) {
+func (r *userCRUDRepoMock) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error) {
 	return r.getByUUIDFn(ctx, uuid, tx)
 }
 
-func (r *userCRUDRepoMock) GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error) {
+func (r *userCRUDRepoMock) GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error) {
 	return r.getByLoginFn(ctx, login, tx)
 }
 
-func (r *userCRUDRepoMock) Create(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error {
+func (r *userCRUDRepoMock) Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error {
 	return r.createFn(ctx, user, tx)
 }
 
-func (r *userCRUDRepoMock) UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx *pgx.Tx) error {
+func (r *userCRUDRepoMock) UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error {
 	return r.updateByUUIDFn(ctx, uuid, user, tx)
 }
 
-func (r *userCRUDRepoMock) DeleteByUUID(ctx context.Context, uuid string, tx *pgx.Tx) error {
+func (r *userCRUDRepoMock) DeleteByUUID(ctx context.Context, uuid string, tx pgx.Tx) error {
 	return r.deleteByUUIDFn(ctx, uuid, tx)
 }
 
@@ -83,13 +83,13 @@ func newUserFixture() *userFixture {
 		},
 	}
 	userRepo := &userCRUDRepoMock{
-		getAllFn: func(_ context.Context, tx *pgx.Tx) ([]domain.User, error) {
+		getAllFn: func(_ context.Context, tx pgx.Tx) ([]domain.User, error) {
 			if tx != nil {
 				return nil, errors.New("expected nil tx")
 			}
 			return users, nil
 		},
-		getByUUIDFn: func(_ context.Context, uuid string, tx *pgx.Tx) (*domain.User, error) {
+		getByUUIDFn: func(_ context.Context, uuid string, tx pgx.Tx) (*domain.User, error) {
 			if tx != nil {
 				return nil, errors.New("expected nil tx")
 			}
@@ -98,7 +98,7 @@ func newUserFixture() *userFixture {
 			}
 			return user, nil
 		},
-		getByLoginFn: func(_ context.Context, login string, tx *pgx.Tx) (*domain.User, error) {
+		getByLoginFn: func(_ context.Context, login string, tx pgx.Tx) (*domain.User, error) {
 			if tx != nil {
 				return nil, errors.New("expected nil tx")
 			}
@@ -107,19 +107,19 @@ func newUserFixture() *userFixture {
 			}
 			return user, nil
 		},
-		createFn: func(_ context.Context, _ domain.CreateUser, tx *pgx.Tx) error {
+		createFn: func(_ context.Context, _ domain.CreateUser, tx pgx.Tx) error {
 			if tx != nil {
 				return errors.New("expected nil tx")
 			}
 			return nil
 		},
-		updateByUUIDFn: func(_ context.Context, _ string, _ domain.UpdateUser, tx *pgx.Tx) error {
+		updateByUUIDFn: func(_ context.Context, _ string, _ domain.UpdateUser, tx pgx.Tx) error {
 			if tx != nil {
 				return errors.New("expected nil tx")
 			}
 			return nil
 		},
-		deleteByUUIDFn: func(_ context.Context, _ string, tx *pgx.Tx) error {
+		deleteByUUIDFn: func(_ context.Context, _ string, tx pgx.Tx) error {
 			if tx != nil {
 				return errors.New("expected nil tx")
 			}
@@ -135,7 +135,7 @@ func newUserFixture() *userFixture {
 		},
 	}
 
-	useCase := NewUserUseCase(mainRepo, userRepo, pswdService)
+	useCase := NewUserUseCase(userRepo, pswdService)
 
 	return &userFixture{
 		useCase:     useCase,
@@ -209,7 +209,7 @@ func Test_UserUseCase_Create_HashError(t *testing.T) {
 func Test_UserUseCase_Create_RepoError(t *testing.T) {
 	f := newUserFixture()
 	wantErr := errors.New("repo error")
-	f.userRepo.createFn = func(_ context.Context, _ domain.CreateUser, _ *pgx.Tx) error {
+	f.userRepo.createFn = func(_ context.Context, _ domain.CreateUser, _ pgx.Tx) error {
 		return wantErr
 	}
 
@@ -222,7 +222,7 @@ func Test_UserUseCase_Create_RepoError(t *testing.T) {
 func Test_UserUseCase_Create_OK(t *testing.T) {
 	f := newUserFixture()
 	called := false
-	f.userRepo.createFn = func(_ context.Context, user domain.CreateUser, tx *pgx.Tx) error {
+	f.userRepo.createFn = func(_ context.Context, user domain.CreateUser, tx pgx.Tx) error {
 		called = true
 		if tx != nil {
 			t.Fatal("expected nil tx")
@@ -250,7 +250,7 @@ func Test_UserUseCase_Create_ShortPassword(t *testing.T) {
 		return "", nil
 	}
 	repoCalled := false
-	f.userRepo.createFn = func(_ context.Context, _ domain.CreateUser, _ *pgx.Tx) error {
+	f.userRepo.createFn = func(_ context.Context, _ domain.CreateUser, _ pgx.Tx) error {
 		repoCalled = true
 		return nil
 	}
@@ -283,7 +283,7 @@ func Test_UserUseCase_UpdateByUUID_HashError(t *testing.T) {
 func Test_UserUseCase_UpdateByUUID_RepoError(t *testing.T) {
 	f := newUserFixture()
 	wantErr := errors.New("repo error")
-	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, _ domain.UpdateUser, _ *pgx.Tx) error {
+	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, _ domain.UpdateUser, _ pgx.Tx) error {
 		return wantErr
 	}
 
@@ -296,7 +296,7 @@ func Test_UserUseCase_UpdateByUUID_RepoError(t *testing.T) {
 func Test_UserUseCase_UpdateByUUID_OK(t *testing.T) {
 	f := newUserFixture()
 	called := false
-	f.userRepo.updateByUUIDFn = func(_ context.Context, uuid string, user domain.UpdateUser, tx *pgx.Tx) error {
+	f.userRepo.updateByUUIDFn = func(_ context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error {
 		called = true
 		if tx != nil {
 			t.Fatal("expected nil tx")
@@ -326,7 +326,7 @@ func Test_UserUseCase_UpdateByUUID_WithoutPassword(t *testing.T) {
 		hashCalled = true
 		return "", nil
 	}
-	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, user domain.UpdateUser, tx *pgx.Tx) error {
+	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, user domain.UpdateUser, tx pgx.Tx) error {
 		if tx != nil {
 			t.Fatal("expected nil tx")
 		}
@@ -353,7 +353,7 @@ func Test_UserUseCase_UpdateByUUID_ShortPassword(t *testing.T) {
 		return "", nil
 	}
 	repoCalled := false
-	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, _ domain.UpdateUser, _ *pgx.Tx) error {
+	f.userRepo.updateByUUIDFn = func(_ context.Context, _ string, _ domain.UpdateUser, _ pgx.Tx) error {
 		repoCalled = true
 		return nil
 	}
@@ -373,7 +373,7 @@ func Test_UserUseCase_UpdateByUUID_ShortPassword(t *testing.T) {
 func Test_UserUseCase_DeleteByUUID_RepoError(t *testing.T) {
 	f := newUserFixture()
 	wantErr := errors.New("repo error")
-	f.userRepo.deleteByUUIDFn = func(_ context.Context, _ string, _ *pgx.Tx) error {
+	f.userRepo.deleteByUUIDFn = func(_ context.Context, _ string, _ pgx.Tx) error {
 		return wantErr
 	}
 
@@ -386,7 +386,7 @@ func Test_UserUseCase_DeleteByUUID_RepoError(t *testing.T) {
 func Test_UserUseCase_DeleteByUUID_OK(t *testing.T) {
 	f := newUserFixture()
 	called := false
-	f.userRepo.deleteByUUIDFn = func(_ context.Context, uuid string, tx *pgx.Tx) error {
+	f.userRepo.deleteByUUIDFn = func(_ context.Context, uuid string, tx pgx.Tx) error {
 		called = true
 		if tx != nil {
 			t.Fatal("expected nil tx")

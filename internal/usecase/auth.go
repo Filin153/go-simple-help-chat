@@ -13,19 +13,19 @@ import (
 
 // AuthUserRepo provides user persistence for auth flows.
 type AuthUserRepo interface {
-	GetByUUID(ctx context.Context, uuid string, tx *pgx.Tx) (*domain.User, error)
-	GetByLogin(ctx context.Context, login string, tx *pgx.Tx) (*domain.User, error)
-	UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx *pgx.Tx) error
-	Create(ctx context.Context, user domain.CreateUser, tx *pgx.Tx) error
-	CreateClient(ctx context.Context, client domain.CreateClient, tx *pgx.Tx) error
+	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
+	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
+	UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx pgx.Tx) error
+	Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
+	CreateClient(ctx context.Context, client domain.CreateClient, tx pgx.Tx) error
 }
 
 // AuthRefreshTokenRepo stores refresh tokens.
 type AuthRefreshTokenRepo interface {
-	Get(ctx context.Context, jti string, tx *pgx.Tx) (*domain.RefreshToken, error)
-	Create(ctx context.Context, jti, userUUID string, tx *pgx.Tx) error
-	DeleteByUserUUID(ctx context.Context, userUUID string, tx *pgx.Tx) error
-	DeleteByJTI(ctx context.Context, jti string, tx *pgx.Tx) error
+	Get(ctx context.Context, jti string, tx pgx.Tx) (*domain.RefreshToken, error)
+	Create(ctx context.Context, jti, userUUID string, tx pgx.Tx) error
+	DeleteByUserUUID(ctx context.Context, userUUID string, tx pgx.Tx) error
+	DeleteByJTI(ctx context.Context, jti string, tx pgx.Tx) error
 }
 
 // AuthJWTService creates and validates JWT tokens.
@@ -98,7 +98,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 		return nil, err
 	}
 
-	user, err := a.userRepo.GetByUUID(ctx, userUUID, &tx)
+	user, err := a.userRepo.GetByUUID(ctx, userUUID, tx)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		createUser := domain.CreateUser{
@@ -107,7 +107,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 			Role:     domain.UserRoleClient,
 		}
 
-		if err := a.userRepo.Create(ctx, createUser, &tx); err != nil {
+		if err := a.userRepo.Create(ctx, createUser, tx); err != nil {
 			return nil, err
 		}
 
@@ -116,7 +116,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 			Info:     userInfo,
 		}
 
-		if err := a.userRepo.CreateClient(ctx, createClient, &tx); err != nil {
+		if err := a.userRepo.CreateClient(ctx, createClient, tx); err != nil {
 			return nil, err
 		}
 
@@ -129,7 +129,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 	} else if err != nil {
 		return nil, err
 	} else {
-		if err := a.userRepo.UpdateUserPasswordByUUID(ctx, user.UUID, pswd, &tx); err != nil {
+		if err := a.userRepo.UpdateUserPasswordByUUID(ctx, user.UUID, pswd, tx); err != nil {
 			return nil, err
 		}
 	}
@@ -139,11 +139,11 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, &tx); err != nil {
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, tx); err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, &tx); err != nil {
+	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, tx); err != nil {
 		return nil, err
 	}
 
@@ -162,7 +162,7 @@ func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domai
 	}
 	defer tx.Rollback(ctx)
 
-	user, err := a.userRepo.GetByLogin(ctx, login, &tx)
+	user, err := a.userRepo.GetByLogin(ctx, login, tx)
 	if err != nil {
 		return nil, domain.ErrLogin
 	}
@@ -176,11 +176,11 @@ func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domai
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, &tx); err != nil {
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, tx); err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, &tx); err != nil {
+	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, tx); err != nil {
 		return nil, err
 	}
 
@@ -223,12 +223,12 @@ func (a *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*domain
 	}
 	defer tx.Rollback(ctx)
 
-	refFromDB, err := a.refreshTokenRepo.Get(ctx, token.JTI, &tx)
+	refFromDB, err := a.refreshTokenRepo.Get(ctx, token.JTI, tx)
 	if err != nil {
 		return nil, err
 	}
 
-	user, err := a.userRepo.GetByUUID(ctx, refFromDB.UserUUID, &tx)
+	user, err := a.userRepo.GetByUUID(ctx, refFromDB.UserUUID, tx)
 	if err != nil {
 		return nil, domain.ErrLogin
 	}
@@ -238,11 +238,11 @@ func (a *AuthUseCase) Refresh(ctx context.Context, refreshToken string) (*domain
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, &tx); err != nil {
+	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, tx); err != nil {
 		return nil, err
 	}
 
-	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, &tx); err != nil {
+	if err := a.refreshTokenRepo.Create(ctx, refJTI, user.UUID, tx); err != nil {
 		return nil, err
 	}
 
