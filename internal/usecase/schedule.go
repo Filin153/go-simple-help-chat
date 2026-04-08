@@ -69,7 +69,7 @@ func (s *ScheduleUseCase) GenerateBaseSchedule(ctx context.Context, departmentID
 
 	res := make([]domain.CreateSchedule, 0, 365)
 	scheduleDate := time.Date(-1, time.January, 1, 0, 0, 0, 0, time.UTC)
-	for i := 0; i < 365; i++ {
+	for range 365 {
 		day := scheduleDate.Weekday()
 
 		item := domain.CreateSchedule{

@@ -2,11 +2,20 @@ package repository
 
 import (
 	"context"
-	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+type poolPinger interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+var (
+	parsePoolConfig   = pgxpool.ParseConfig
+	newPoolWithConfig = pgxpool.NewWithConfig
+	pingPool          = defaultPingPool
 )
 
 type Execer interface {
@@ -16,37 +25,45 @@ type Execer interface {
 }
 
 type Repository struct {
-	DB *pgxpool.Pool
+	DB      *pgxpool.Pool
+	beginTx func(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error)
+	db      Execer
 }
 
-func NewRepository(ctx context.Context, dns string, logLevel slog.Level) (*Repository, error) {
-	config, err := pgxpool.ParseConfig(dns)
+func defaultPingPool(ctx context.Context, pool poolPinger) error {
+	_, err := pool.Exec(ctx, "SELECT 1;")
+	return err
+}
+
+func NewRepository(ctx context.Context, dns string) (*Repository, error) {
+	config, err := parsePoolConfig(dns)
 	if err != nil {
 		return nil, err
 	}
 
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	pool, err := newPoolWithConfig(ctx, config)
 	if err != nil {
 		return nil, err
 	}
 
-	_, err = pool.Exec(ctx, "SELECT 1;")
-	if err != nil {
+	if err := pingPool(ctx, pool); err != nil {
 		return nil, err
 	}
 
 	return &Repository{
-		DB: pool,
+		DB:      pool,
+		beginTx: pool.BeginTx,
+		db:      pool,
 	}, nil
 }
 
 func (r *Repository) CreateSession(ctx context.Context, options pgx.TxOptions) (pgx.Tx, error) {
-	return r.DB.BeginTx(ctx, options)
+	return r.beginTx(ctx, options)
 }
 
 func (r *Repository) GetDB(tx pgx.Tx) Execer {
 	if tx == nil {
-		return r.DB
+		return r.db
 	}
 	return tx
 }
