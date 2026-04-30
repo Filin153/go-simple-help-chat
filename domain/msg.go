@@ -3,6 +3,7 @@ package domain
 import "time"
 
 type MsgFromType string
+type MsgStatus string
 
 const (
 	MsgFromTypeManager MsgFromType = "manager"
@@ -10,14 +11,15 @@ const (
 	MsgFromTypeSystem  MsgFromType = "system"
 )
 
-type CreateMsgFromClient struct {
-	Text  string `json:"text" validate:"required,max=500"`
-	Files [][]byte
-}
+const (
+	MsgStatusDraft MsgStatus = "draft" // сообщение набрано, но ещё не отправлено.
+	MsgStatusSent  MsgStatus = "sent"  // сообщение сохраненно на сервер.
+	MsgStatusRead  MsgStatus = "read"  // пользователь открыл чат и сообщение отмечено прочитанным.
+)
 
-type CreateMsgFromManager struct {
+type CreateMsg struct {
 	TicketID int    `json:"ticket_id" validate:"required"`
-	Text     string `json:"text" validate:"required,max=500"`
+	Text     string `json:"text" validate:"required,max=1000"`
 	Files    [][]byte
 }
 
@@ -32,10 +34,7 @@ type Msg struct {
 	FromType MsgFromType      `db:"from_type" json:"from_type"`
 	Text     string           `db:"text" json:"text"`
 	TicketID int              `db:"ticket_id" json:"ticket_id"`
-	Read     bool             `db:"read" json:"read"`
+	Status   MsgStatus        `db:"status" json:"status"`
 	CreateAt time.Time        `db:"create_at" json:"create_at"`
 	Files    []MsgFileContent `json:"files"`
-	Ticket   Ticket           `json:"ticket"`
-	FromUser User             `json:"from_user"`
-	ToUser   User             `json:"to_user"`
 }
