@@ -11,7 +11,9 @@ type LocalCache struct {
 }
 
 func NewLocalCache() *LocalCache {
-	return &LocalCache{}
+	return &LocalCache{
+		storage: make(map[string][]byte),
+	}
 }
 
 func (c *LocalCache) Set(ctx context.Context, key string, val []byte) error {

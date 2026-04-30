@@ -11,6 +11,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var getAllNewTickerDuration = time.Second
+
 type MsgCacheInterface interface {
 	Set(ctx context.Context, userUUID string, val *domain.Msg) error
 	Get(ctx context.Context, userUUID string) ([]domain.Msg, bool, error)
@@ -139,7 +141,7 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID int) (res []domain
 	timeOutContext, cf := context.WithTimeout(ctx, c.longPullReadTimeOut)
 	defer cf()
 
-	ticker := time.NewTicker(time.Second)
+	ticker := time.NewTicker(getAllNewTickerDuration)
 	defer ticker.Stop()
 
 	for {
