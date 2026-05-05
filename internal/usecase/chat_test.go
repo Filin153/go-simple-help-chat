@@ -14,20 +14,20 @@ import (
 
 type chatMsgCacheMock struct {
 	setFn           func(ctx context.Context, userUUID string, val *domain.Msg) error
-	getFn           func(ctx context.Context, userUUID string) ([]domain.Msg, bool, error)
-	deleteByMsgIDFn func(ctx context.Context, userUUID string, id int)
+	getFn           func(ctx context.Context, userUUID string) ([]*domain.Msg, bool, error)
+	deleteByMsgIDFn func(ctx context.Context, userUUID string, id int) error
 }
 
 func (m *chatMsgCacheMock) Set(ctx context.Context, userUUID string, val *domain.Msg) error {
 	return m.setFn(ctx, userUUID, val)
 }
 
-func (m *chatMsgCacheMock) Get(ctx context.Context, userUUID string) ([]domain.Msg, bool, error) {
+func (m *chatMsgCacheMock) Get(ctx context.Context, userUUID string) ([]*domain.Msg, bool, error) {
 	return m.getFn(ctx, userUUID)
 }
 
-func (m *chatMsgCacheMock) DeleteByMsgID(ctx context.Context, userUUID string, id int) {
-	m.deleteByMsgIDFn(ctx, userUUID, id)
+func (m *chatMsgCacheMock) DeleteByMsgID(ctx context.Context, userUUID string, id int) error {
+	return m.deleteByMsgIDFn(ctx, userUUID, id)
 }
 
 type chatS3Mock struct {
@@ -41,9 +41,9 @@ func (m *chatS3Mock) Save(ctx context.Context, folder string, file []byte) (stri
 type chatMsgRepoMock struct {
 	createFn       func(ctx context.Context, msg domain.CreateMsg, fromType domain.MsgFromType, draft bool, tx pgx.Tx) (*domain.Msg, error)
 	createFileFn   func(ctx context.Context, msgID int, path string, tx pgx.Tx) (domain.MsgFileContent, error)
-	getUnreadFn    func(ctx context.Context, userUUID int, tx pgx.Tx) ([]domain.Msg, error)
+	getUnreadFn    func(ctx context.Context, userUUID int, tx pgx.Tx) ([]*domain.Msg, error)
 	markReadByIDFn func(ctx context.Context, userUUID string, id int, tx pgx.Tx) error
-	getHistoryFn   func(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]domain.Msg, error)
+	getHistoryFn   func(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error)
 }
 
 func (m *chatMsgRepoMock) Create(ctx context.Context, msg domain.CreateMsg, fromType domain.MsgFromType, draft bool, tx pgx.Tx) (*domain.Msg, error) {
@@ -54,7 +54,7 @@ func (m *chatMsgRepoMock) CreateFile(ctx context.Context, msgID int, path string
 	return m.createFileFn(ctx, msgID, path, tx)
 }
 
-func (m *chatMsgRepoMock) GetUnread(ctx context.Context, userUUID int, tx pgx.Tx) ([]domain.Msg, error) {
+func (m *chatMsgRepoMock) GetUnread(ctx context.Context, userUUID int, tx pgx.Tx) ([]*domain.Msg, error) {
 	return m.getUnreadFn(ctx, userUUID, tx)
 }
 
@@ -62,7 +62,7 @@ func (m *chatMsgRepoMock) MarkReadByID(ctx context.Context, userUUID string, id 
 	return m.markReadByIDFn(ctx, userUUID, id, tx)
 }
 
-func (m *chatMsgRepoMock) GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]domain.Msg, error) {
+func (m *chatMsgRepoMock) GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error) {
 	return m.getHistoryFn(ctx, userUUID, ticketUUID, from, to)
 }
 
@@ -85,7 +85,7 @@ type chatFixture struct {
 	msg        domain.CreateMsg
 	savedMsg   *domain.Msg
 	ticket     domain.Ticket
-	history    []domain.Msg
+	history    []*domain.Msg
 }
 
 func newChatFixture() *chatFixture {
@@ -106,7 +106,7 @@ func newChatFixture() *chatFixture {
 		ManagerUserUUID: "manager-uuid",
 		ClientUserUUID:  "client-uuid",
 	}
-	history := []domain.Msg{*savedMsg}
+	history := []*domain.Msg{savedMsg}
 
 	mainRepo := &mainRepoMock{
 		createSessionFn: func(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
@@ -117,10 +117,10 @@ func newChatFixture() *chatFixture {
 		setFn: func(_ context.Context, _ string, _ *domain.Msg) error {
 			return nil
 		},
-		getFn: func(_ context.Context, _ string) ([]domain.Msg, bool, error) {
+		getFn: func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 			return nil, false, nil
 		},
-		deleteByMsgIDFn: func(_ context.Context, _ string, _ int) {},
+		deleteByMsgIDFn: func(_ context.Context, _ string, _ int) error { return nil },
 	}
 	s3 := &chatS3Mock{
 		saveFn: func(_ context.Context, folder string, file []byte) (string, error) {
@@ -151,13 +151,13 @@ func newChatFixture() *chatFixture {
 			}
 			return domain.MsgFileContent{ID: 1, MsgID: msgID, Path: path}, nil
 		},
-		getUnreadFn: func(_ context.Context, _ int, _ pgx.Tx) ([]domain.Msg, error) {
+		getUnreadFn: func(_ context.Context, _ int, _ pgx.Tx) ([]*domain.Msg, error) {
 			return nil, nil
 		},
 		markReadByIDFn: func(_ context.Context, _ string, _ int, _ pgx.Tx) error {
 			return nil
 		},
-		getHistoryFn: func(_ context.Context, _ string, _ int, _, _ time.Time) ([]domain.Msg, error) {
+		getHistoryFn: func(_ context.Context, _ string, _ int, _, _ time.Time) ([]*domain.Msg, error) {
 			return history, nil
 		},
 	}
@@ -196,10 +196,10 @@ func Test_NewChatUseCase(t *testing.T) {
 	if f.useCase.mainRepo != f.mainRepo {
 		t.Fatal("unexpected mainRepo")
 	}
-	if f.useCase.msgRepo != f.msgRepo {
+	if f.useCase.msgRepo != MsgRepo(f.msgRepo) {
 		t.Fatal("unexpected msgRepo")
 	}
-	if f.useCase.msgCache != f.msgCache {
+	if f.useCase.msgCache != MsgCacheInterface(f.msgCache) {
 		t.Fatal("unexpected msgCache")
 	}
 	if f.useCase.s3 != f.s3 {
@@ -525,8 +525,8 @@ func Test_ChatUseCase_GetAllNew_CacheHit(t *testing.T) {
 	t.Cleanup(func() {
 		getAllNewTickerDuration = origTickerDuration
 	})
-	want := []domain.Msg{{ID: 1}}
-	f.msgCache.getFn = func(_ context.Context, userUUID string) ([]domain.Msg, bool, error) {
+	want := []*domain.Msg{{ID: 1}}
+	f.msgCache.getFn = func(_ context.Context, userUUID string) ([]*domain.Msg, bool, error) {
 		if userUUID != "42" {
 			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, "42")
 		}
@@ -553,10 +553,10 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadError(t *testing.T) {
 		getAllNewTickerDuration = origTickerDuration
 	})
 	wantErr := errors.New("unread error")
-	f.msgCache.getFn = func(_ context.Context, _ string) ([]domain.Msg, bool, error) {
+	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		return nil, false, errors.New("cache error")
 	}
-	f.msgRepo.getUnreadFn = func(_ context.Context, userUUID int, tx pgx.Tx) ([]domain.Msg, error) {
+	f.msgRepo.getUnreadFn = func(_ context.Context, userUUID int, tx pgx.Tx) ([]*domain.Msg, error) {
 		if userUUID != 7 {
 			t.Fatalf("unexpected user uuid: got=%d want=7", userUUID)
 		}
@@ -585,11 +585,11 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadFound(t *testing.T) {
 	t.Cleanup(func() {
 		getAllNewTickerDuration = origTickerDuration
 	})
-	want := []domain.Msg{{ID: 5}}
-	f.msgCache.getFn = func(_ context.Context, _ string) ([]domain.Msg, bool, error) {
+	want := []*domain.Msg{{ID: 5}}
+	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		return nil, false, errors.New("cache error")
 	}
-	f.msgRepo.getUnreadFn = func(_ context.Context, _ int, _ pgx.Tx) ([]domain.Msg, error) {
+	f.msgRepo.getUnreadFn = func(_ context.Context, _ int, _ pgx.Tx) ([]*domain.Msg, error) {
 		return want, nil
 	}
 
@@ -614,7 +614,7 @@ func Test_ChatUseCase_GetAllNew_CacheMissTimeout(t *testing.T) {
 	})
 	f.useCase.longPullReadTimeOut = 5 * time.Millisecond
 	cacheReads := 0
-	f.msgCache.getFn = func(_ context.Context, _ string) ([]domain.Msg, bool, error) {
+	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		cacheReads++
 		return nil, false, nil
 	}
@@ -683,11 +683,12 @@ func Test_ChatUseCase_MarkAsRead_CommitError(t *testing.T) {
 func Test_ChatUseCase_MarkAsRead_OK(t *testing.T) {
 	f := newChatFixture()
 	deleted := make(chan int, 2)
-	f.msgCache.deleteByMsgIDFn = func(_ context.Context, userUUID string, id int) {
+	f.msgCache.deleteByMsgIDFn = func(_ context.Context, userUUID string, id int) error {
 		if userUUID != "user-1" {
 			t.Fatalf("unexpected user uuid: got=%q want=%q", userUUID, "user-1")
 		}
 		deleted <- id
+		return nil
 	}
 	seen := make([]int, 0, 2)
 	f.msgRepo.markReadByIDFn = func(_ context.Context, _ string, id int, tx pgx.Tx) error {

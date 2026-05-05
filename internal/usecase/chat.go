@@ -15,8 +15,8 @@ var getAllNewTickerDuration = time.Second
 
 type MsgCacheInterface interface {
 	Set(ctx context.Context, userUUID string, val *domain.Msg) error
-	Get(ctx context.Context, userUUID string) ([]domain.Msg, bool, error)
-	DeleteByMsgID(ctx context.Context, userUUID string, id int)
+	Get(ctx context.Context, userUUID string) ([]*domain.Msg, bool, error)
+	DeleteByMsgID(ctx context.Context, userUUID string, id int) error
 }
 
 type S3Interface interface {
@@ -26,9 +26,9 @@ type S3Interface interface {
 type MsgRepo interface {
 	Create(ctx context.Context, msg domain.CreateMsg, fromType domain.MsgFromType, draft bool, tx pgx.Tx) (savedMsg *domain.Msg, err error)
 	CreateFile(ctx context.Context, msgID int, path string, tx pgx.Tx) (file domain.MsgFileContent, err error)
-	GetUnread(ctx context.Context, userUUID int, tx pgx.Tx) (msg []domain.Msg, err error)
+	GetUnread(ctx context.Context, userUUID int, tx pgx.Tx) (msg []*domain.Msg, err error)
 	MarkReadByID(ctx context.Context, userUUID string, id int, tx pgx.Tx) error
-	GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]domain.Msg, error)
+	GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error)
 }
 
 type TicketRepo interface {
@@ -137,7 +137,7 @@ func (c *ChatUseCase) Send(ctx context.Context, msg domain.CreateMsg, fromType d
 	return nil
 }
 
-func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID int) (res []domain.Msg, ok bool, err error) {
+func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID int) (res []*domain.Msg, ok bool, err error) {
 	timeOutContext, cf := context.WithTimeout(ctx, c.longPullReadTimeOut)
 	defer cf()
 
@@ -188,6 +188,6 @@ func (c *ChatUseCase) MarkAsRead(ctx context.Context, userUUID string, msgIDs []
 	return nil
 }
 
-func (c *ChatUseCase) GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]domain.Msg, error) {
+func (c *ChatUseCase) GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error) {
 	return c.msgRepo.GetHistory(ctx, userUUID, ticketUUID, from, to)
 }
