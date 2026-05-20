@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"errors"
 	"io"
-	"strings"
 	"testing"
 )
 
@@ -23,84 +22,86 @@ func useDefaultCryptoHooks(t *testing.T) {
 	})
 }
 
+func newAESFixture() (*AES256GCM, [32]byte) {
+	var key [32]byte
+	for i := range len(key) {
+		key[i] = 1
+	}
+	return NewAES256GCM(key), key
+}
+
+func Test_NewAES256GCM(t *testing.T) {
+	enc, key := newAESFixture()
+
+	if enc == nil {
+		t.Fatal("NewAES256GCM returned nil")
+	}
+	if !bytes.Equal(enc.key32, key[:]) {
+		t.Fatalf("unexpected key bytes: got=%v want=%v", enc.key32, key[:])
+	}
+}
+
 func Test_AES256GCM_OK(t *testing.T) {
-	key := bytes.Repeat([]byte{1}, 32)
+	enc, _ := newAESFixture()
 	msg := []byte("AES-256-GCM")
 	aad := []byte("aad")
 
-	enc, err := EncryptAES256GCM(key, msg, aad)
+	ciphertext, err := enc.Encrypt(msg, aad)
 	if err != nil {
-		t.Fatalf("EncryptAES256GCM returned error: %v", err)
+		t.Fatalf("Encrypt returned error: %v", err)
 	}
 
-	dec, err := DecryptAES256GCM(key, enc, aad)
+	plaintext, err := enc.Decrypt(ciphertext, aad)
 	if err != nil {
-		t.Fatalf("DecryptAES256GCM returned error: %v", err)
+		t.Fatalf("Decrypt returned error: %v", err)
 	}
-
-	if !bytes.Equal(msg, dec) {
-		t.Fatalf("plaintext mismatch; got %q want %q", dec, msg)
+	if !bytes.Equal(plaintext, msg) {
+		t.Fatalf("plaintext mismatch: got=%q want=%q", plaintext, msg)
 	}
 }
 
-func Test_AES256GCM_DiffAdd_ERROR(t *testing.T) {
-	key := bytes.Repeat([]byte{1}, 32)
+func Test_AES256GCM_DiffAad_Error(t *testing.T) {
+	enc, _ := newAESFixture()
 	msg := []byte("AES-256-GCM")
 
-	enc, err := EncryptAES256GCM(key, msg, []byte("aad"))
+	ciphertext, err := enc.Encrypt(msg, []byte("aad"))
 	if err != nil {
-		t.Fatalf("EncryptAES256GCM returned error: %v", err)
+		t.Fatalf("Encrypt returned error: %v", err)
 	}
 
-	_, err = DecryptAES256GCM(key, enc, []byte(""))
+	_, err = enc.Decrypt(ciphertext, []byte("other"))
 	if err == nil {
-		t.Fatal("DecryptAES256GCM expected error for mismatched aad")
+		t.Fatal("expected error for mismatched aad")
 	}
 }
 
-func Test_AES256GCM_DiffKey_ERROR(t *testing.T) {
-	keyOne := bytes.Repeat([]byte{1}, 32)
-	keyTwo := bytes.Repeat([]byte{2}, 32)
+func Test_AES256GCM_DiffKey_Error(t *testing.T) {
+	encOne, _ := newAESFixture()
+	var keyTwo [32]byte
+	for i := range len(keyTwo) {
+		keyTwo[i] = 2
+	}
+	encTwo := NewAES256GCM(keyTwo)
 	msg := []byte("AES-256-GCM")
 	aad := []byte("aad")
 
-	enc, err := EncryptAES256GCM(keyOne, msg, aad)
+	ciphertext, err := encOne.Encrypt(msg, aad)
 	if err != nil {
-		t.Fatalf("EncryptAES256GCM returned error: %v", err)
+		t.Fatalf("Encrypt returned error: %v", err)
 	}
 
-	_, err = DecryptAES256GCM(keyTwo, enc, aad)
+	_, err = encTwo.Decrypt(ciphertext, aad)
 	if err == nil {
-		t.Fatal("DecryptAES256GCM expected error for mismatched key")
-	}
-}
-
-func Test_AES256GCM_Encrypt_InvalidKeyLength(t *testing.T) {
-	_, err := EncryptAES256GCM([]byte("short"), []byte("msg"), []byte("aad"))
-	if err == nil {
-		t.Fatal("EncryptAES256GCM expected invalid key length error")
-	}
-	if !strings.Contains(err.Error(), "key must be 32 bytes") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-}
-
-func Test_AES256GCM_Decrypt_InvalidKeyLength(t *testing.T) {
-	_, err := DecryptAES256GCM([]byte("short"), []byte("ciphertext"), []byte("aad"))
-	if err == nil {
-		t.Fatal("DecryptAES256GCM expected invalid key length error")
-	}
-	if !strings.Contains(err.Error(), "key must be 32 bytes") {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal("expected error for mismatched key")
 	}
 }
 
 func Test_AES256GCM_Decrypt_CiphertextTooShort(t *testing.T) {
-	key := bytes.Repeat([]byte{1}, 32)
+	enc, _ := newAESFixture()
 
-	_, err := DecryptAES256GCM(key, []byte("short"), []byte("aad"))
+	_, err := enc.Decrypt([]byte("short"), []byte("aad"))
 	if err == nil {
-		t.Fatal("DecryptAES256GCM expected ciphertext too short error")
+		t.Fatal("expected ciphertext too short error")
 	}
 	if err.Error() != "ciphertext too short" {
 		t.Fatalf("unexpected error: %v", err)
@@ -109,14 +110,15 @@ func Test_AES256GCM_Decrypt_CiphertextTooShort(t *testing.T) {
 
 func Test_AES256GCM_Encrypt_ReadFullError(t *testing.T) {
 	useDefaultCryptoHooks(t)
+	enc, _ := newAESFixture()
 
 	readFull = func(_ io.Reader, _ []byte) (int, error) {
 		return 0, errors.New("read error")
 	}
 
-	_, err := EncryptAES256GCM(bytes.Repeat([]byte{1}, 32), []byte("msg"), []byte("aad"))
+	_, err := enc.Encrypt([]byte("msg"), []byte("aad"))
 	if err == nil {
-		t.Fatal("EncryptAES256GCM expected readFull error")
+		t.Fatal("expected readFull error")
 	}
 	if err.Error() != "read error" {
 		t.Fatalf("unexpected error: %v", err)
@@ -125,14 +127,15 @@ func Test_AES256GCM_Encrypt_ReadFullError(t *testing.T) {
 
 func Test_AES256GCM_Encrypt_AESNewCipherError(t *testing.T) {
 	useDefaultCryptoHooks(t)
+	enc, _ := newAESFixture()
 
 	aesNewCipher = func(_ []byte) (cipher.Block, error) {
 		return nil, errors.New("new cipher error")
 	}
 
-	_, err := EncryptAES256GCM(bytes.Repeat([]byte{1}, 32), []byte("msg"), []byte("aad"))
+	_, err := enc.Encrypt([]byte("msg"), []byte("aad"))
 	if err == nil {
-		t.Fatal("EncryptAES256GCM expected aesNewCipher error")
+		t.Fatal("expected aesNewCipher error")
 	}
 	if err.Error() != "new cipher error" {
 		t.Fatalf("unexpected error: %v", err)
@@ -141,14 +144,15 @@ func Test_AES256GCM_Encrypt_AESNewCipherError(t *testing.T) {
 
 func Test_AES256GCM_Decrypt_AESNewCipherError(t *testing.T) {
 	useDefaultCryptoHooks(t)
+	enc, _ := newAESFixture()
 
 	aesNewCipher = func(_ []byte) (cipher.Block, error) {
 		return nil, errors.New("new cipher error")
 	}
 
-	_, err := DecryptAES256GCM(bytes.Repeat([]byte{1}, 32), []byte("ciphertext"), []byte("aad"))
+	_, err := enc.Decrypt([]byte("ciphertext"), []byte("aad"))
 	if err == nil {
-		t.Fatal("DecryptAES256GCM expected aesNewCipher error")
+		t.Fatal("expected aesNewCipher error")
 	}
 	if err.Error() != "new cipher error" {
 		t.Fatalf("unexpected error: %v", err)
@@ -157,14 +161,15 @@ func Test_AES256GCM_Decrypt_AESNewCipherError(t *testing.T) {
 
 func Test_AES256GCM_Encrypt_CipherNewGCMError(t *testing.T) {
 	useDefaultCryptoHooks(t)
+	enc, _ := newAESFixture()
 
 	cipherNewGCM = func(_ cipher.Block) (cipher.AEAD, error) {
 		return nil, errors.New("new gcm error")
 	}
 
-	_, err := EncryptAES256GCM(bytes.Repeat([]byte{1}, 32), []byte("msg"), []byte("aad"))
+	_, err := enc.Encrypt([]byte("msg"), []byte("aad"))
 	if err == nil {
-		t.Fatal("EncryptAES256GCM expected cipherNewGCM error")
+		t.Fatal("expected cipherNewGCM error")
 	}
 	if err.Error() != "new gcm error" {
 		t.Fatalf("unexpected error: %v", err)
@@ -173,14 +178,15 @@ func Test_AES256GCM_Encrypt_CipherNewGCMError(t *testing.T) {
 
 func Test_AES256GCM_Decrypt_CipherNewGCMError(t *testing.T) {
 	useDefaultCryptoHooks(t)
+	enc, _ := newAESFixture()
 
 	cipherNewGCM = func(_ cipher.Block) (cipher.AEAD, error) {
 		return nil, errors.New("new gcm error")
 	}
 
-	_, err := DecryptAES256GCM(bytes.Repeat([]byte{1}, 32), []byte("ciphertext"), []byte("aad"))
+	_, err := enc.Decrypt([]byte("ciphertext"), []byte("aad"))
 	if err == nil {
-		t.Fatal("DecryptAES256GCM expected cipherNewGCM error")
+		t.Fatal("expected cipherNewGCM error")
 	}
 	if err.Error() != "new gcm error" {
 		t.Fatalf("unexpected error: %v", err)

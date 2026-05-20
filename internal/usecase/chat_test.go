@@ -1,9 +1,10 @@
 package usecase
 
 import (
+	"bytes"
 	"context"
 	"errors"
-	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -31,30 +32,40 @@ func (m *chatMsgCacheMock) DeleteByMsgID(ctx context.Context, userUUID string, i
 }
 
 type chatS3Mock struct {
-	saveFn func(ctx context.Context, folder string, file []byte) (string, error)
+	saveFn   func(ctx context.Context, folder string, file []byte) (string, error)
+	deleteFn func(ctx context.Context, path string) error
 }
 
 func (m *chatS3Mock) Save(ctx context.Context, folder string, file []byte) (string, error) {
 	return m.saveFn(ctx, folder, file)
 }
 
+func (m *chatS3Mock) Delete(ctx context.Context, path string) error {
+	return m.deleteFn(ctx, path)
+}
+
 type chatMsgRepoMock struct {
-	createFn       func(ctx context.Context, msg domain.CreateMsg, fromType domain.MsgFromType, draft bool, tx pgx.Tx) (*domain.Msg, error)
-	createFileFn   func(ctx context.Context, msgID int, path string, tx pgx.Tx) (domain.MsgFileContent, error)
-	getUnreadFn    func(ctx context.Context, userUUID int, tx pgx.Tx) ([]*domain.Msg, error)
-	markReadByIDFn func(ctx context.Context, userUUID string, id int, tx pgx.Tx) error
-	getHistoryFn   func(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error)
+	createForClientFn  func(ctx context.Context, msg domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error)
+	createForManagerFn func(ctx context.Context, msg domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error)
+	createFileFn       func(ctx context.Context, msgID int, fileName, path string, tx pgx.Tx) (domain.MsgFileContent, error)
+	getUnreadFn        func(ctx context.Context, userUUID string, tx pgx.Tx) ([]*domain.Msg, error)
+	markReadByIDFn     func(ctx context.Context, userUUID string, id int, tx pgx.Tx) error
+	getHistoryFn       func(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error)
 }
 
-func (m *chatMsgRepoMock) Create(ctx context.Context, msg domain.CreateMsg, fromType domain.MsgFromType, draft bool, tx pgx.Tx) (*domain.Msg, error) {
-	return m.createFn(ctx, msg, fromType, draft, tx)
+func (m *chatMsgRepoMock) CreateForClient(ctx context.Context, msg domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
+	return m.createForClientFn(ctx, msg, tx)
 }
 
-func (m *chatMsgRepoMock) CreateFile(ctx context.Context, msgID int, path string, tx pgx.Tx) (domain.MsgFileContent, error) {
-	return m.createFileFn(ctx, msgID, path, tx)
+func (m *chatMsgRepoMock) CreateForManager(ctx context.Context, msg domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
+	return m.createForManagerFn(ctx, msg, tx)
 }
 
-func (m *chatMsgRepoMock) GetUnread(ctx context.Context, userUUID int, tx pgx.Tx) ([]*domain.Msg, error) {
+func (m *chatMsgRepoMock) CreateFile(ctx context.Context, msgID int, fileName, path string, tx pgx.Tx) (domain.MsgFileContent, error) {
+	return m.createFileFn(ctx, msgID, fileName, path, tx)
+}
+
+func (m *chatMsgRepoMock) GetUnread(ctx context.Context, userUUID string, tx pgx.Tx) ([]*domain.Msg, error) {
 	return m.getUnreadFn(ctx, userUUID, tx)
 }
 
@@ -74,6 +85,19 @@ func (m *chatTicketRepoMock) GetByID(ctx context.Context, id int) (domain.Ticket
 	return m.getByIDFn(ctx, id)
 }
 
+type chatEncryptionMock struct {
+	encryptFn func(plaintext []byte, aad []byte) ([]byte, error)
+	decryptFn func(data []byte, aad []byte) ([]byte, error)
+}
+
+func (m *chatEncryptionMock) Encrypt(plaintext []byte, aad []byte) ([]byte, error) {
+	return m.encryptFn(plaintext, aad)
+}
+
+func (m *chatEncryptionMock) Decrypt(data []byte, aad []byte) ([]byte, error) {
+	return m.decryptFn(data, aad)
+}
+
 type chatFixture struct {
 	useCase    *ChatUseCase
 	tx         *fakeTx
@@ -82,31 +106,48 @@ type chatFixture struct {
 	s3         *chatS3Mock
 	msgRepo    *chatMsgRepoMock
 	ticketRepo *chatTicketRepoMock
+	encryption *chatEncryptionMock
 	msg        domain.CreateMsg
-	savedMsg   *domain.Msg
 	ticket     domain.Ticket
+	clientMsg  *domain.Msg
+	managerMsg *domain.Msg
 	history    []*domain.Msg
 }
 
 func newChatFixture() *chatFixture {
 	txObj := &fakeTx{}
+
 	msg := domain.CreateMsg{
 		TicketID: 99,
 		Text:     "hello",
 	}
-	savedMsg := &domain.Msg{
-		ID:       15,
-		FromType: domain.MsgFromTypeManager,
-		Text:     msg.Text,
-		TicketID: msg.TicketID,
-		Status:   domain.MsgStatusSent,
-	}
 	ticket := domain.Ticket{
 		ID:              msg.TicketID,
-		ManagerUserUUID: "manager-uuid",
 		ClientUserUUID:  "client-uuid",
+		ManagerUserUUID: "manager-uuid",
 	}
-	history := []*domain.Msg{savedMsg}
+	clientMsg := &domain.Msg{
+		ID:            10,
+		FromType:      domain.MsgFromTypeManager,
+		EncryptedText: []byte("enc:hello"),
+		TicketID:      msg.TicketID,
+		Status:        domain.MsgStatusSent,
+	}
+	managerMsg := &domain.Msg{
+		ID:            11,
+		FromType:      domain.MsgFromTypeClient,
+		EncryptedText: []byte("enc:hello"),
+		TicketID:      msg.TicketID,
+		Status:        domain.MsgStatusSent,
+	}
+	history := []*domain.Msg{
+		{
+			ID:            20,
+			TicketID:      msg.TicketID,
+			EncryptedText: []byte("enc:history"),
+			Status:        domain.MsgStatusRead,
+		},
+	}
 
 	mainRepo := &mainRepoMock{
 		createSessionFn: func(_ context.Context, _ pgx.TxOptions) (pgx.Tx, error) {
@@ -120,45 +161,77 @@ func newChatFixture() *chatFixture {
 		getFn: func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 			return nil, false, nil
 		},
-		deleteByMsgIDFn: func(_ context.Context, _ string, _ int) error { return nil },
+		deleteByMsgIDFn: func(_ context.Context, _ string, _ int) error {
+			return nil
+		},
 	}
 	s3 := &chatS3Mock{
 		saveFn: func(_ context.Context, folder string, file []byte) (string, error) {
 			return folder + "/" + string(file), nil
 		},
+		deleteFn: func(_ context.Context, _ string) error {
+			return nil
+		},
 	}
 	msgRepo := &chatMsgRepoMock{
-		createFn: func(_ context.Context, createMsg domain.CreateMsg, fromType domain.MsgFromType, draft bool, tx pgx.Tx) (*domain.Msg, error) {
+		createForClientFn: func(_ context.Context, createMsg domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
 			if tx != txObj {
 				return nil, errors.New("unexpected tx")
 			}
 			if createMsg.TicketID != msg.TicketID {
 				return nil, errors.New("unexpected ticket id")
 			}
-			if draft {
-				return nil, errors.New("unexpected draft flag")
+			if createMsg.Text != "" {
+				return nil, errors.New("expected empty text before db save")
 			}
-			savedCopy := *savedMsg
-			savedCopy.FromType = fromType
-			return &savedCopy, nil
+			if !bytes.Equal(createMsg.EncryptedText, []byte("enc:hello")) {
+				return nil, errors.New("unexpected encrypted text")
+			}
+			saved := *clientMsg
+			saved.EncryptedText = createMsg.EncryptedText
+			return &saved, nil
 		},
-		createFileFn: func(_ context.Context, msgID int, path string, tx pgx.Tx) (domain.MsgFileContent, error) {
-			if msgID != savedMsg.ID {
-				return domain.MsgFileContent{}, errors.New("unexpected msg id")
+		createForManagerFn: func(_ context.Context, createMsg domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
+			if tx != txObj {
+				return nil, errors.New("unexpected tx")
 			}
+			if createMsg.TicketID != msg.TicketID {
+				return nil, errors.New("unexpected ticket id")
+			}
+			if createMsg.Text != "" {
+				return nil, errors.New("expected empty text before db save")
+			}
+			if !bytes.Equal(createMsg.EncryptedText, []byte("enc:hello")) {
+				return nil, errors.New("unexpected encrypted text")
+			}
+			saved := *managerMsg
+			saved.EncryptedText = createMsg.EncryptedText
+			return &saved, nil
+		},
+		createFileFn: func(_ context.Context, msgID int, fileName, path string, tx pgx.Tx) (domain.MsgFileContent, error) {
 			if tx != txObj {
 				return domain.MsgFileContent{}, errors.New("unexpected tx")
 			}
-			return domain.MsgFileContent{ID: 1, MsgID: msgID, Path: path}, nil
+			return domain.MsgFileContent{
+				ID:       msgID*100 + len(fileName),
+				MsgID:    msgID,
+				FileName: fileName,
+				Path:     path,
+			}, nil
 		},
-		getUnreadFn: func(_ context.Context, _ int, _ pgx.Tx) ([]*domain.Msg, error) {
+		getUnreadFn: func(_ context.Context, _ string, _ pgx.Tx) ([]*domain.Msg, error) {
 			return nil, nil
 		},
 		markReadByIDFn: func(_ context.Context, _ string, _ int, _ pgx.Tx) error {
 			return nil
 		},
 		getHistoryFn: func(_ context.Context, _ string, _ int, _, _ time.Time) ([]*domain.Msg, error) {
-			return history, nil
+			res := make([]*domain.Msg, 0, len(history))
+			for _, item := range history {
+				copyItem := *item
+				res = append(res, &copyItem)
+			}
+			return res, nil
 		},
 	}
 	ticketRepo := &chatTicketRepoMock{
@@ -169,8 +242,22 @@ func newChatFixture() *chatFixture {
 			return ticket, nil
 		},
 	}
+	encryption := &chatEncryptionMock{
+		encryptFn: func(plaintext []byte, aad []byte) ([]byte, error) {
+			if !bytes.Equal(aad, []byte("99")) {
+				return nil, errors.New("unexpected aad")
+			}
+			return append([]byte("enc:"), plaintext...), nil
+		},
+		decryptFn: func(data []byte, aad []byte) ([]byte, error) {
+			if !bytes.Equal(aad, []byte("99")) {
+				return nil, errors.New("unexpected aad")
+			}
+			return bytes.TrimPrefix(data, []byte("enc:")), nil
+		},
+	}
 
-	useCase := NewChatUseCase(msgCache, s3, msgRepo, ticketRepo, mainRepo, 20*time.Millisecond)
+	useCase := NewChatUseCase(msgCache, s3, msgRepo, ticketRepo, mainRepo, encryption, 20*time.Millisecond)
 
 	return &chatFixture{
 		useCase:    useCase,
@@ -180,9 +267,11 @@ func newChatFixture() *chatFixture {
 		s3:         s3,
 		msgRepo:    msgRepo,
 		ticketRepo: ticketRepo,
+		encryption: encryption,
 		msg:        msg,
-		savedMsg:   savedMsg,
 		ticket:     ticket,
+		clientMsg:  clientMsg,
+		managerMsg: managerMsg,
 		history:    history,
 	}
 }
@@ -196,17 +285,43 @@ func Test_NewChatUseCase(t *testing.T) {
 	if f.useCase.mainRepo != f.mainRepo {
 		t.Fatal("unexpected mainRepo")
 	}
-	if f.useCase.msgRepo != MsgRepo(f.msgRepo) {
-		t.Fatal("unexpected msgRepo")
-	}
-	if f.useCase.msgCache != MsgCacheInterface(f.msgCache) {
-		t.Fatal("unexpected msgCache")
-	}
-	if f.useCase.s3 != f.s3 {
-		t.Fatal("unexpected s3")
-	}
 	if f.useCase.ticketRepo != f.ticketRepo {
 		t.Fatal("unexpected ticketRepo")
+	}
+	if f.useCase.s3 != S3Interface(f.s3) {
+		t.Fatal("unexpected s3")
+	}
+	if f.useCase.encryption != f.encryption {
+		t.Fatal("unexpected encryption")
+	}
+}
+
+func Test_ChatUseCase_Send_TicketError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("ticket error")
+	f.ticketRepo.getByIDFn = func(_ context.Context, id int) (domain.Ticket, error) {
+		if id != f.msg.TicketID {
+			t.Fatalf("unexpected ticket id: got=%d want=%d", id, f.msg.TicketID)
+		}
+		return domain.Ticket{}, wantErr
+	}
+
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected ticket error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_Send_EncryptError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("encrypt error")
+	f.encryption.encryptFn = func(_ []byte, _ []byte) ([]byte, error) {
+		return nil, wantErr
+	}
+
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected encrypt error, got=%v", err)
 	}
 }
 
@@ -223,114 +338,124 @@ func Test_ChatUseCase_Send_CreateSessionError(t *testing.T) {
 	}
 }
 
-func Test_ChatUseCase_Send_CreateError(t *testing.T) {
+func Test_ChatUseCase_Send_FileToS3Error(t *testing.T) {
 	f := newChatFixture()
-	wantErr := errors.New("create error")
-	f.msgRepo.createFn = func(_ context.Context, _ domain.CreateMsg, _ domain.MsgFromType, _ bool, tx pgx.Tx) (*domain.Msg, error) {
+	wantErr := errors.New("save error")
+	f.msg.Files = []domain.CreateFile{{Name: "a.txt", Data: []byte("a")}}
+	f.s3.saveFn = func(_ context.Context, _ string, _ []byte) (string, error) {
+		return "", wantErr
+	}
+
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected save error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_Send_ManagerDBError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("create for client error")
+	f.msgRepo.createForClientFn = func(_ context.Context, _ domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
 		if tx != f.tx {
-			t.Fatal("expected tx in Create")
+			t.Fatal("expected tx in CreateForClient")
 		}
 		return nil, wantErr
 	}
 
 	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected create error, got=%v", err)
+		t.Fatalf("expected create for client error, got=%v", err)
 	}
 }
 
-func Test_ChatUseCase_Send_TooManyFiles(t *testing.T) {
+func Test_ChatUseCase_Send_ClientDBError(t *testing.T) {
 	f := newChatFixture()
-	s3Called := false
-	f.s3.saveFn = func(_ context.Context, _ string, _ []byte) (string, error) {
-		s3Called = true
-		return "", nil
-	}
-	f.msg.Files = make([][]byte, 11)
-
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
-	if !errors.Is(err, domain.ErrFilesLoad) {
-		t.Fatalf("expected ErrFilesLoad, got=%v", err)
-	}
-	if s3Called {
-		t.Fatal("s3.Save must not be called when too many files are provided")
-	}
-}
-
-func Test_ChatUseCase_Send_FileTooLarge(t *testing.T) {
-	f := newChatFixture()
-	s3Called := false
-	f.s3.saveFn = func(_ context.Context, _ string, _ []byte) (string, error) {
-		s3Called = true
-		return "", nil
-	}
-	f.msg.Files = [][]byte{make([]byte, 16*1024*1024)}
-
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
-	if !errors.Is(err, domain.ErrFilesLoad) {
-		t.Fatalf("expected ErrFilesLoad, got=%v", err)
-	}
-	if s3Called {
-		t.Fatal("s3.Save must not be called when file is too large")
-	}
-}
-
-func Test_ChatUseCase_Send_S3Error(t *testing.T) {
-	f := newChatFixture()
-	wantErr := errors.New("s3 error")
-	f.msg.Files = [][]byte{[]byte("a")}
-	f.s3.saveFn = func(_ context.Context, folder string, file []byte) (string, error) {
-		if folder != "ticket/file/"+strconv.Itoa(f.savedMsg.ID) {
-			t.Fatalf("unexpected folder: got=%q", folder)
-		}
-		if string(file) != "a" {
-			t.Fatalf("unexpected file payload: got=%q", string(file))
-		}
-		return "", wantErr
-	}
-
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected s3 error, got=%v", err)
-	}
-}
-
-func Test_ChatUseCase_Send_CreateFileError(t *testing.T) {
-	f := newChatFixture()
-	wantErr := errors.New("create file error")
-	f.msg.Files = [][]byte{[]byte("a")}
-	f.msgRepo.createFileFn = func(_ context.Context, msgID int, path string, tx pgx.Tx) (domain.MsgFileContent, error) {
-		if msgID != f.savedMsg.ID {
-			t.Fatalf("unexpected msg id: got=%d want=%d", msgID, f.savedMsg.ID)
-		}
-		if path == "" {
-			t.Fatal("expected non-empty path")
-		}
+	wantErr := errors.New("create for manager error")
+	f.msgRepo.createForManagerFn = func(_ context.Context, _ domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
 		if tx != f.tx {
-			t.Fatal("expected tx in CreateFile")
+			t.Fatal("expected tx in CreateForManager")
 		}
-		return domain.MsgFileContent{}, wantErr
+		return nil, wantErr
 	}
 
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeClient)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected create file error, got=%v", err)
+		t.Fatalf("expected create for manager error, got=%v", err)
 	}
 }
 
-func Test_ChatUseCase_Send_TicketError(t *testing.T) {
+func Test_ChatUseCase_Send_SystemDBError(t *testing.T) {
 	f := newChatFixture()
-	wantErr := errors.New("ticket error")
-	f.ticketRepo.getByIDFn = func(_ context.Context, id int) (domain.Ticket, error) {
-		if id != f.savedMsg.TicketID {
-			t.Fatalf("unexpected ticket id: got=%d want=%d", id, f.savedMsg.TicketID)
+	wantErr := errors.New("system db error")
+	f.msgRepo.createForClientFn = func(_ context.Context, _ domain.CreateMsg, _ pgx.Tx) (*domain.Msg, error) {
+		return nil, wantErr
+	}
+	f.msgRepo.createForManagerFn = func(_ context.Context, _ domain.CreateMsg, _ pgx.Tx) (*domain.Msg, error) {
+		return nil, wantErr
+	}
+
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeSystem)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected system db error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_Send_SystemSecondDBError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("system second db error")
+	f.msgRepo.createForManagerFn = func(_ context.Context, _ domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
+		if tx != f.tx {
+			t.Fatal("expected tx in CreateForManager")
 		}
-		return domain.Ticket{}, wantErr
+		return nil, wantErr
+	}
+
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeSystem)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected system second db error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_Send_CleanupFilesOnDBError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("create for client error")
+	deleted := make(chan string, 1)
+	f.msg.Files = []domain.CreateFile{{Name: "a.txt", Data: []byte("a")}}
+	f.msgRepo.createForClientFn = func(_ context.Context, _ domain.CreateMsg, tx pgx.Tx) (*domain.Msg, error) {
+		if tx != f.tx {
+			t.Fatal("expected tx in CreateForClient")
+		}
+		return nil, wantErr
+	}
+	f.s3.deleteFn = func(_ context.Context, path string) error {
+		deleted <- path
+		return nil
 	}
 
 	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
 	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected ticket error, got=%v", err)
+		t.Fatalf("expected create for client error, got=%v", err)
+	}
+
+	select {
+	case path := <-deleted:
+		if path != "ticket/file/99/a" {
+			t.Fatalf("unexpected deleted path: got=%q", path)
+		}
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("timed out waiting for s3 delete")
+	}
+}
+
+func Test_ChatUseCase_Send_UnknownFromType(t *testing.T) {
+	f := newChatFixture()
+
+	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromType("unknown"))
+	if err == nil {
+		t.Fatal("expected error for unknown MsgFromType")
+	}
+	if err.Error() != "Unknown MsgFromType" {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -348,7 +473,10 @@ func Test_ChatUseCase_Send_CommitError(t *testing.T) {
 func Test_ChatUseCase_Send_OK_Manager_WithFiles(t *testing.T) {
 	f := newChatFixture()
 	done := make(chan *domain.Msg, 1)
-	f.msg.Files = [][]byte{[]byte("a"), []byte("b")}
+	f.msg.Files = []domain.CreateFile{
+		{Name: "a.txt", Data: []byte("a")},
+		{Name: "b.txt", Data: []byte("b")},
+	}
 	f.msgCache.setFn = func(_ context.Context, userUUID string, val *domain.Msg) error {
 		if userUUID != f.ticket.ClientUserUUID {
 			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, f.ticket.ClientUserUUID)
@@ -368,10 +496,10 @@ func Test_ChatUseCase_Send_OK_Manager_WithFiles(t *testing.T) {
 	select {
 	case cachedMsg := <-done:
 		if len(cachedMsg.Files) != 2 {
-			t.Fatalf("unexpected files len in cached msg: got=%d want=2", len(cachedMsg.Files))
+			t.Fatalf("unexpected files len: got=%d want=2", len(cachedMsg.Files))
 		}
-		if cachedMsg.Files[0].MsgID != f.savedMsg.ID || cachedMsg.Files[1].MsgID != f.savedMsg.ID {
-			t.Fatalf("unexpected msg ids in cached files: got=%+v", cachedMsg.Files)
+		if cachedMsg.Files[0].FileName != "a.txt" || cachedMsg.Files[1].FileName != "b.txt" {
+			t.Fatalf("unexpected file names: got=%+v", cachedMsg.Files)
 		}
 	case <-time.After(200 * time.Millisecond):
 		t.Fatal("timed out waiting for cache.Set")
@@ -428,85 +556,12 @@ func Test_ChatUseCase_Send_OK_System(t *testing.T) {
 	}
 }
 
-func Test_ChatUseCase_Send_CacheSetError_Manager(t *testing.T) {
-	f := newChatFixture()
-	done := make(chan string, 1)
-	f.msgCache.setFn = func(_ context.Context, userUUID string, _ *domain.Msg) error {
-		done <- userUUID
-		return errors.New("cache set error")
-	}
-
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeManager)
-	if err != nil {
-		t.Fatalf("Send returned error: %v", err)
-	}
-
-	select {
-	case userUUID := <-done:
-		if userUUID != f.ticket.ClientUserUUID {
-			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, f.ticket.ClientUserUUID)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timed out waiting for cache.Set")
-	}
-}
-
-func Test_ChatUseCase_Send_CacheSetError_Client(t *testing.T) {
-	f := newChatFixture()
-	done := make(chan string, 1)
-	f.msgCache.setFn = func(_ context.Context, userUUID string, _ *domain.Msg) error {
-		done <- userUUID
-		return errors.New("cache set error")
-	}
-
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeClient)
-	if err != nil {
-		t.Fatalf("Send returned error: %v", err)
-	}
-
-	select {
-	case userUUID := <-done:
-		if userUUID != f.ticket.ManagerUserUUID {
-			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, f.ticket.ManagerUserUUID)
-		}
-	case <-time.After(200 * time.Millisecond):
-		t.Fatal("timed out waiting for cache.Set")
-	}
-}
-
-func Test_ChatUseCase_Send_CacheSetError_System(t *testing.T) {
-	f := newChatFixture()
-	done := make(chan string, 2)
-	f.msgCache.setFn = func(_ context.Context, userUUID string, _ *domain.Msg) error {
-		done <- userUUID
-		return errors.New("cache set error")
-	}
-
-	err := f.useCase.Send(context.Background(), f.msg, domain.MsgFromTypeSystem)
-	if err != nil {
-		t.Fatalf("Send returned error: %v", err)
-	}
-
-	got := map[string]int{}
-	for i := 0; i < 2; i++ {
-		select {
-		case userUUID := <-done:
-			got[userUUID]++
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("timed out waiting for cache.Set calls")
-		}
-	}
-	if got[f.ticket.ClientUserUUID] != 1 || got[f.ticket.ManagerUserUUID] != 1 {
-		t.Fatalf("unexpected cache recipients: got=%v", got)
-	}
-}
-
 func Test_ChatUseCase_GetAllNew_ContextDone(t *testing.T) {
 	f := newChatFixture()
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	res, ok, err := f.useCase.GetAllNew(ctx, 1)
+	res, ok, err := f.useCase.GetAllNew(ctx, "user-1")
 	if err != nil {
 		t.Fatalf("GetAllNew returned error: %v", err)
 	}
@@ -525,23 +580,25 @@ func Test_ChatUseCase_GetAllNew_CacheHit(t *testing.T) {
 	t.Cleanup(func() {
 		getAllNewTickerDuration = origTickerDuration
 	})
-	want := []*domain.Msg{{ID: 1}}
+	want := []*domain.Msg{
+		{ID: 1, TicketID: f.msg.TicketID, EncryptedText: []byte("enc:cache")},
+	}
 	f.msgCache.getFn = func(_ context.Context, userUUID string) ([]*domain.Msg, bool, error) {
-		if userUUID != "42" {
-			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, "42")
+		if userUUID != "user-42" {
+			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, "user-42")
 		}
 		return want, true, nil
 	}
 
-	res, ok, err := f.useCase.GetAllNew(context.Background(), 42)
+	res, ok, err := f.useCase.GetAllNew(context.Background(), "user-42")
 	if err != nil {
 		t.Fatalf("GetAllNew returned error: %v", err)
 	}
 	if !ok {
 		t.Fatal("expected ok to be true")
 	}
-	if len(res) != 1 || res[0].ID != want[0].ID {
-		t.Fatalf("unexpected result: got=%v want=%v", res, want)
+	if len(res) != 1 || res[0].Text != "cache" {
+		t.Fatalf("unexpected result: got=%v", res)
 	}
 }
 
@@ -556,9 +613,9 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadError(t *testing.T) {
 	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		return nil, false, errors.New("cache error")
 	}
-	f.msgRepo.getUnreadFn = func(_ context.Context, userUUID int, tx pgx.Tx) ([]*domain.Msg, error) {
-		if userUUID != 7 {
-			t.Fatalf("unexpected user uuid: got=%d want=7", userUUID)
+	f.msgRepo.getUnreadFn = func(_ context.Context, userUUID string, tx pgx.Tx) ([]*domain.Msg, error) {
+		if userUUID != "user-7" {
+			t.Fatalf("unexpected user uuid: got=%q want=%q", userUUID, "user-7")
 		}
 		if tx != nil {
 			t.Fatal("expected nil tx in GetUnread")
@@ -566,7 +623,7 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadError(t *testing.T) {
 		return nil, wantErr
 	}
 
-	res, ok, err := f.useCase.GetAllNew(context.Background(), 7)
+	res, ok, err := f.useCase.GetAllNew(context.Background(), "user-7")
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected unread error, got=%v", err)
 	}
@@ -585,23 +642,25 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadFound(t *testing.T) {
 	t.Cleanup(func() {
 		getAllNewTickerDuration = origTickerDuration
 	})
-	want := []*domain.Msg{{ID: 5}}
+	want := []*domain.Msg{
+		{ID: 5, TicketID: f.msg.TicketID, EncryptedText: []byte("enc:fallback")},
+	}
 	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		return nil, false, errors.New("cache error")
 	}
-	f.msgRepo.getUnreadFn = func(_ context.Context, _ int, _ pgx.Tx) ([]*domain.Msg, error) {
+	f.msgRepo.getUnreadFn = func(_ context.Context, _ string, _ pgx.Tx) ([]*domain.Msg, error) {
 		return want, nil
 	}
 
-	res, ok, err := f.useCase.GetAllNew(context.Background(), 7)
+	res, ok, err := f.useCase.GetAllNew(context.Background(), "user-7")
 	if err != nil {
 		t.Fatalf("GetAllNew returned error: %v", err)
 	}
 	if !ok {
 		t.Fatal("expected ok to be true")
 	}
-	if len(res) != 1 || res[0].ID != want[0].ID {
-		t.Fatalf("unexpected result: got=%v want=%v", res, want)
+	if len(res) != 1 || res[0].Text != "fallback" {
+		t.Fatalf("unexpected result: got=%v", res)
 	}
 }
 
@@ -619,7 +678,7 @@ func Test_ChatUseCase_GetAllNew_CacheMissTimeout(t *testing.T) {
 		return nil, false, nil
 	}
 
-	res, ok, err := f.useCase.GetAllNew(context.Background(), 9)
+	res, ok, err := f.useCase.GetAllNew(context.Background(), "user-9")
 	if err != nil {
 		t.Fatalf("GetAllNew returned error: %v", err)
 	}
@@ -631,6 +690,33 @@ func Test_ChatUseCase_GetAllNew_CacheMissTimeout(t *testing.T) {
 	}
 	if cacheReads == 0 {
 		t.Fatal("expected cache.Get to be called at least once")
+	}
+}
+
+func Test_ChatUseCase_GetAllNew_DecryptError(t *testing.T) {
+	f := newChatFixture()
+	origTickerDuration := getAllNewTickerDuration
+	getAllNewTickerDuration = time.Millisecond
+	t.Cleanup(func() {
+		getAllNewTickerDuration = origTickerDuration
+	})
+	wantErr := errors.New("decrypt error")
+	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
+		return []*domain.Msg{{ID: 1, TicketID: f.msg.TicketID, EncryptedText: []byte("boom")}}, true, nil
+	}
+	f.encryption.decryptFn = func(_ []byte, _ []byte) ([]byte, error) {
+		return nil, wantErr
+	}
+
+	res, ok, err := f.useCase.GetAllNew(context.Background(), "user-1")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected decrypt error, got=%v", err)
+	}
+	if ok != true {
+		t.Fatal("expected ok to stay true")
+	}
+	if len(res) != 1 {
+		t.Fatalf("expected one result, got=%v", res)
 	}
 }
 
@@ -724,7 +810,39 @@ func Test_ChatUseCase_MarkAsRead_OK(t *testing.T) {
 	}
 }
 
-func Test_ChatUseCase_GetHistory(t *testing.T) {
+func Test_ChatUseCase_GetHistory_RepoError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("history error")
+	f.msgRepo.getHistoryFn = func(_ context.Context, _ string, _ int, _, _ time.Time) ([]*domain.Msg, error) {
+		return nil, wantErr
+	}
+
+	history, err := f.useCase.GetHistory(context.Background(), "user-1", 99, time.Time{}, time.Time{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected history error, got=%v", err)
+	}
+	if history != nil {
+		t.Fatalf("expected nil history, got=%v", history)
+	}
+}
+
+func Test_ChatUseCase_GetHistory_DecryptError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("decrypt error")
+	f.encryption.decryptFn = func(_ []byte, _ []byte) ([]byte, error) {
+		return nil, wantErr
+	}
+
+	history, err := f.useCase.GetHistory(context.Background(), "user-1", 99, time.Time{}, time.Time{})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected decrypt error, got=%v", err)
+	}
+	if history != nil {
+		t.Fatalf("expected nil history, got=%v", history)
+	}
+}
+
+func Test_ChatUseCase_GetHistory_OK(t *testing.T) {
 	f := newChatFixture()
 	from := time.Date(2026, time.April, 1, 0, 0, 0, 0, time.UTC)
 	to := time.Date(2026, time.April, 2, 0, 0, 0, 0, time.UTC)
@@ -733,7 +851,393 @@ func Test_ChatUseCase_GetHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetHistory returned error: %v", err)
 	}
-	if len(history) != 1 || history[0].ID != f.history[0].ID {
-		t.Fatalf("unexpected history: got=%v want=%v", history, f.history)
+	if len(history) != 1 || history[0].Text != "history" {
+		t.Fatalf("unexpected history: got=%v", history)
+	}
+}
+
+func Test_ChatUseCase_fileToS3_TooManyFiles(t *testing.T) {
+	f := newChatFixture()
+
+	files, pathes, err := f.useCase.fileToS3(context.Background(), make([]domain.CreateFile, 11), f.msg.TicketID)
+	if !errors.Is(err, domain.ErrFilesLoad) {
+		t.Fatalf("expected ErrFilesLoad, got=%v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("expected empty files result, got=%v", files)
+	}
+	if len(pathes) != 0 {
+		t.Fatalf("expected empty paths result, got=%v", pathes)
+	}
+}
+
+func Test_ChatUseCase_fileToS3_FileTooLarge(t *testing.T) {
+	f := newChatFixture()
+
+	files, pathes, err := f.useCase.fileToS3(context.Background(), []domain.CreateFile{{Name: "big.bin", Data: make([]byte, 16*1024*1024)}}, f.msg.TicketID)
+	if !errors.Is(err, domain.ErrFilesLoad) {
+		t.Fatalf("expected ErrFilesLoad, got=%v", err)
+	}
+	if len(files) != 0 {
+		t.Fatalf("expected empty files result, got=%v", files)
+	}
+	if len(pathes) != 0 {
+		t.Fatalf("expected empty paths result, got=%v", pathes)
+	}
+}
+
+func Test_ChatUseCase_fileToS3_SaveError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("save error")
+	f.s3.saveFn = func(_ context.Context, _ string, _ []byte) (string, error) {
+		return "", wantErr
+	}
+
+	files, pathes, err := f.useCase.fileToS3(context.Background(), []domain.CreateFile{{Name: "a.txt", Data: []byte("a")}}, f.msg.TicketID)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected save error, got=%v", err)
+	}
+	if len(files) != 1 || files[0].Path != "" {
+		t.Fatalf("unexpected files result: got=%v", files)
+	}
+	if len(pathes) != 0 {
+		t.Fatalf("expected empty paths result, got=%v", pathes)
+	}
+}
+
+func Test_ChatUseCase_fileToS3_PartialSaveError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("save error")
+	f.s3.saveFn = func(_ context.Context, folder string, file []byte) (string, error) {
+		if bytes.Equal(file, []byte("bad")) {
+			return "", wantErr
+		}
+		return folder + "/" + string(file), nil
+	}
+
+	files, pathes, err := f.useCase.fileToS3(context.Background(), []domain.CreateFile{
+		{Name: "ok.txt", Data: []byte("ok")},
+		{Name: "bad.txt", Data: []byte("bad")},
+	}, f.msg.TicketID)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected save error, got=%v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("unexpected files result: got=%v", files)
+	}
+	if len(pathes) != 1 || pathes[0] != "ticket/file/99/ok" {
+		t.Fatalf("unexpected paths result: got=%v", pathes)
+	}
+}
+
+func Test_ChatUseCase_fileToS3_OK(t *testing.T) {
+	f := newChatFixture()
+
+	files, pathes, err := f.useCase.fileToS3(context.Background(), []domain.CreateFile{{Name: "a.txt", Data: []byte("a")}}, f.msg.TicketID)
+	if err != nil {
+		t.Fatalf("fileToS3 returned error: %v", err)
+	}
+	if len(files) != 1 || files[0].Path == "" {
+		t.Fatalf("unexpected files result: got=%v", files)
+	}
+	if len(pathes) != 1 || pathes[0] != files[0].Path {
+		t.Fatalf("unexpected paths result: got=%v", pathes)
+	}
+}
+
+func Test_ChatUseCase_encryptMsgText_OK(t *testing.T) {
+	f := newChatFixture()
+	msg := domain.CreateMsg{TicketID: 77, Text: "secret"}
+	f.encryption.encryptFn = func(plaintext []byte, aad []byte) ([]byte, error) {
+		if !bytes.Equal(plaintext, []byte("secret")) {
+			t.Fatalf("unexpected plaintext: got=%q", string(plaintext))
+		}
+		if !bytes.Equal(aad, []byte("77")) {
+			t.Fatalf("unexpected aad: got=%q", string(aad))
+		}
+		return []byte("cipher"), nil
+	}
+
+	err := f.useCase.encryptMsgText(&msg)
+	if err != nil {
+		t.Fatalf("encryptMsgText returned error: %v", err)
+	}
+	if string(msg.EncryptedText) != "cipher" {
+		t.Fatalf("unexpected encrypted text: got=%q", string(msg.EncryptedText))
+	}
+}
+
+func Test_ChatUseCase_encryptMsgText_Error(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("encrypt error")
+	f.encryption.encryptFn = func(_ []byte, _ []byte) ([]byte, error) {
+		return nil, wantErr
+	}
+
+	err := f.useCase.encryptMsgText(&domain.CreateMsg{TicketID: 1, Text: "x"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected encrypt error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_decryptMsgText_OK(t *testing.T) {
+	f := newChatFixture()
+	msg := &domain.Msg{TicketID: 77, EncryptedText: []byte("cipher")}
+	f.encryption.decryptFn = func(data []byte, aad []byte) ([]byte, error) {
+		if !bytes.Equal(data, []byte("cipher")) {
+			t.Fatalf("unexpected data: got=%q", string(data))
+		}
+		if !bytes.Equal(aad, []byte("77")) {
+			t.Fatalf("unexpected aad: got=%q", string(aad))
+		}
+		return []byte("plain"), nil
+	}
+
+	err := f.useCase.decryptMsgText(msg)
+	if err != nil {
+		t.Fatalf("decryptMsgText returned error: %v", err)
+	}
+	if msg.Text != "plain" {
+		t.Fatalf("unexpected decrypted text: got=%q", msg.Text)
+	}
+}
+
+func Test_ChatUseCase_decryptMsgText_Error(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("decrypt error")
+	f.encryption.decryptFn = func(_ []byte, _ []byte) ([]byte, error) {
+		return nil, wantErr
+	}
+
+	err := f.useCase.decryptMsgText(&domain.Msg{TicketID: 1, EncryptedText: []byte("x")})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected decrypt error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_createAdd(t *testing.T) {
+	f := newChatFixture()
+
+	got := f.useCase.createAdd(123)
+	if string(got) != "123" {
+		t.Fatalf("unexpected aad: got=%q want=%q", string(got), "123")
+	}
+}
+
+func Test_ChatUseCase_createForClientDB_CreateError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("create client msg error")
+	f.msgRepo.createForClientFn = func(_ context.Context, _ domain.CreateMsg, _ pgx.Tx) (*domain.Msg, error) {
+		return nil, wantErr
+	}
+
+	msg, err := f.useCase.createForClientDB(context.Background(), domain.CreateMsg{
+		TicketID:      f.msg.TicketID,
+		EncryptedText: []byte("enc:hello"),
+	}, &f.ticket, nil, f.tx)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create error, got=%v", err)
+	}
+	if msg != nil {
+		t.Fatalf("expected nil msg, got=%v", msg)
+	}
+}
+
+func Test_ChatUseCase_createForClientDB_CreateFileError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("create file error")
+	f.msgRepo.createFileFn = func(_ context.Context, _ int, _, _ string, _ pgx.Tx) (domain.MsgFileContent, error) {
+		return domain.MsgFileContent{}, wantErr
+	}
+
+	msg, err := f.useCase.createForClientDB(context.Background(), domain.CreateMsg{
+		TicketID:      f.msg.TicketID,
+		EncryptedText: []byte("enc:hello"),
+		Files:         []domain.CreateFile{{Name: "a.txt"}},
+	}, &f.ticket, []domain.CreateFile{{Name: "a.txt", Path: "/tmp/a"}}, f.tx)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create file error, got=%v", err)
+	}
+	if msg != nil {
+		t.Fatalf("expected nil msg, got=%v", msg)
+	}
+}
+
+func Test_ChatUseCase_createForClientDB_OK(t *testing.T) {
+	f := newChatFixture()
+
+	msg, err := f.useCase.createForClientDB(context.Background(), domain.CreateMsg{
+		TicketID:      f.msg.TicketID,
+		EncryptedText: []byte("enc:hello"),
+		Files:         []domain.CreateFile{{Name: "a.txt"}},
+	}, &f.ticket, []domain.CreateFile{{Name: "a.txt", Path: "/tmp/a"}}, f.tx)
+	if err != nil {
+		t.Fatalf("createForClientDB returned error: %v", err)
+	}
+	if len(msg.Files) != 1 || msg.Files[0].FileName != "a.txt" {
+		t.Fatalf("unexpected msg files: got=%v", msg.Files)
+	}
+}
+
+func Test_ChatUseCase_createForClientCache_OK(t *testing.T) {
+	f := newChatFixture()
+	called := false
+	f.msgCache.setFn = func(_ context.Context, userUUID string, val *domain.Msg) error {
+		called = true
+		if userUUID != f.ticket.ClientUserUUID {
+			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, f.ticket.ClientUserUUID)
+		}
+		if val != f.clientMsg {
+			t.Fatal("unexpected message pointer")
+		}
+		return nil
+	}
+
+	err := f.useCase.createForClientCache(context.Background(), f.clientMsg, &f.ticket)
+	if err != nil {
+		t.Fatalf("createForClientCache returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected cache.Set to be called")
+	}
+}
+
+func Test_ChatUseCase_createForClientCache_Error(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("cache set error")
+	f.msgCache.setFn = func(_ context.Context, _ string, _ *domain.Msg) error {
+		return wantErr
+	}
+
+	err := f.useCase.createForClientCache(context.Background(), f.clientMsg, &f.ticket)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected cache set error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_createForManagerDB_CreateError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("create manager msg error")
+	f.msgRepo.createForManagerFn = func(_ context.Context, _ domain.CreateMsg, _ pgx.Tx) (*domain.Msg, error) {
+		return nil, wantErr
+	}
+
+	msg, err := f.useCase.createForManagerDB(context.Background(), domain.CreateMsg{
+		TicketID:      f.msg.TicketID,
+		EncryptedText: []byte("enc:hello"),
+	}, &f.ticket, nil, f.tx)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create error, got=%v", err)
+	}
+	if msg != nil {
+		t.Fatalf("expected nil msg, got=%v", msg)
+	}
+}
+
+func Test_ChatUseCase_createForManagerDB_CreateFileError(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("create file error")
+	f.msgRepo.createFileFn = func(_ context.Context, _ int, _, _ string, _ pgx.Tx) (domain.MsgFileContent, error) {
+		return domain.MsgFileContent{}, wantErr
+	}
+
+	msg, err := f.useCase.createForManagerDB(context.Background(), domain.CreateMsg{
+		TicketID:      f.msg.TicketID,
+		EncryptedText: []byte("enc:hello"),
+		Files:         []domain.CreateFile{{Name: "a.txt"}},
+	}, &f.ticket, []domain.CreateFile{{Name: "a.txt", Path: "/tmp/a"}}, f.tx)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected create file error, got=%v", err)
+	}
+	if msg != nil {
+		t.Fatalf("expected nil msg, got=%v", msg)
+	}
+}
+
+func Test_ChatUseCase_createForManagerDB_OK(t *testing.T) {
+	f := newChatFixture()
+
+	msg, err := f.useCase.createForManagerDB(context.Background(), domain.CreateMsg{
+		TicketID:      f.msg.TicketID,
+		EncryptedText: []byte("enc:hello"),
+		Files:         []domain.CreateFile{{Name: "a.txt"}},
+	}, &f.ticket, []domain.CreateFile{{Name: "a.txt", Path: "/tmp/a"}}, f.tx)
+	if err != nil {
+		t.Fatalf("createForManagerDB returned error: %v", err)
+	}
+	if len(msg.Files) != 1 || msg.Files[0].FileName != "a.txt" {
+		t.Fatalf("unexpected msg files: got=%v", msg.Files)
+	}
+}
+
+func Test_ChatUseCase_createForManagerCache_OK(t *testing.T) {
+	f := newChatFixture()
+	called := false
+	f.msgCache.setFn = func(_ context.Context, userUUID string, val *domain.Msg) error {
+		called = true
+		if userUUID != f.ticket.ManagerUserUUID {
+			t.Fatalf("unexpected cache key: got=%q want=%q", userUUID, f.ticket.ManagerUserUUID)
+		}
+		if val != f.managerMsg {
+			t.Fatal("unexpected message pointer")
+		}
+		return nil
+	}
+
+	err := f.useCase.createForManagerCache(context.Background(), f.managerMsg, &f.ticket)
+	if err != nil {
+		t.Fatalf("createForManagerCache returned error: %v", err)
+	}
+	if !called {
+		t.Fatal("expected cache.Set to be called")
+	}
+}
+
+func Test_ChatUseCase_createForManagerCache_Error(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("cache set error")
+	f.msgCache.setFn = func(_ context.Context, _ string, _ *domain.Msg) error {
+		return wantErr
+	}
+
+	err := f.useCase.createForManagerCache(context.Background(), f.managerMsg, &f.ticket)
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected cache set error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_deleteFormS3_Error(t *testing.T) {
+	f := newChatFixture()
+	wantErr := errors.New("delete error")
+	f.s3.deleteFn = func(_ context.Context, path string) error {
+		if path != "/tmp/a" {
+			t.Fatalf("unexpected path: got=%q", path)
+		}
+		return wantErr
+	}
+
+	err := f.useCase.deleteFormS3(context.Background(), []string{"/tmp/a"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected delete error, got=%v", err)
+	}
+}
+
+func Test_ChatUseCase_deleteFormS3_OK(t *testing.T) {
+	f := newChatFixture()
+	var mu sync.Mutex
+	seen := make(map[string]int, 2)
+	f.s3.deleteFn = func(_ context.Context, path string) error {
+		mu.Lock()
+		seen[path]++
+		mu.Unlock()
+		return nil
+	}
+
+	err := f.useCase.deleteFormS3(context.Background(), []string{"/tmp/a", "/tmp/b"})
+	if err != nil {
+		t.Fatalf("deleteFormS3 returned error: %v", err)
+	}
+	if seen["/tmp/a"] != 1 || seen["/tmp/b"] != 1 {
+		t.Fatalf("unexpected deleted paths: got=%v", seen)
 	}
 }

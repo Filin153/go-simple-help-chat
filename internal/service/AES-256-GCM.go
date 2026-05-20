@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"errors"
-	"fmt"
 	"io"
 )
 
@@ -15,13 +14,19 @@ var (
 	readFull     = io.ReadFull
 )
 
-// EncryptAES256GCM encrypts plaintext with AES-256-GCM and prepends nonce.
-func EncryptAES256GCM(key32 []byte, plaintext []byte, aad []byte) ([]byte, error) {
-	if len(key32) != 32 {
-		return nil, fmt.Errorf("key must be 32 bytes (got %d)", len(key32))
-	}
+type AES256GCM struct {
+	key32 []byte
+}
 
-	block, err := aesNewCipher(key32)
+func NewAES256GCM(key32 [32]byte) *AES256GCM {
+	return &AES256GCM{
+		key32: key32[:],
+	}
+}
+
+// Encrypt
+func (a *AES256GCM) Encrypt(plaintext []byte, aad []byte) ([]byte, error) {
+	block, err := aesNewCipher(a.key32)
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +51,9 @@ func EncryptAES256GCM(key32 []byte, plaintext []byte, aad []byte) ([]byte, error
 	return out, nil
 }
 
-// DecryptAES256GCM decrypts data produced by EncryptAES256GCM.
-func DecryptAES256GCM(key32 []byte, data []byte, aad []byte) ([]byte, error) {
-	if len(key32) != 32 {
-		return nil, fmt.Errorf("key must be 32 bytes (got %d)", len(key32))
-	}
-
-	block, err := aesNewCipher(key32)
+// Decrypt
+func (a *AES256GCM) Decrypt(data []byte, aad []byte) ([]byte, error) {
+	block, err := aesNewCipher(a.key32)
 	if err != nil {
 		return nil, err
 	}
