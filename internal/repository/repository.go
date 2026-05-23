@@ -67,3 +67,7 @@ func (r *Repository) GetDB(tx pgx.Tx) Execer {
 	}
 	return tx
 }
+
+func getOffset(page, limit int) int {
+	return (page - 1) * limit
+}

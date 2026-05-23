@@ -15,7 +15,6 @@ import (
 type AuthUserRepo interface {
 	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
-	UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx pgx.Tx) error
 	Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
 	CreateClient(ctx context.Context, client domain.CreateClient, tx pgx.Tx) error
 }
@@ -128,10 +127,6 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 		}
 	} else if err != nil {
 		return nil, err
-	} else {
-		if err := a.userRepo.UpdateUserPasswordByUUID(ctx, user.UUID, pswd, tx); err != nil {
-			return nil, err
-		}
 	}
 
 	tokens, refJTI, err := a.jwtService.CreateTokens(user.UUID, user.Role, a.roleScopes[user.Role], a.accessTokenTTL, a.refreshTokenTTL)
@@ -163,7 +158,7 @@ func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domai
 	defer tx.Rollback(ctx)
 
 	user, err := a.userRepo.GetByLogin(ctx, login, tx)
-	if err != nil {
+	if err != nil || user.Role == domain.UserRoleClient {
 		return nil, domain.ErrLogin
 	}
 

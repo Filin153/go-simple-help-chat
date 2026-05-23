@@ -11,8 +11,10 @@ var (
 	comparePasswordAndHash = argon2id.ComparePasswordAndHash
 )
 
+type PasswordCoder struct{}
+
 // CreatePasswordHash builds an Argon2id hash for the password.
-func CreatePasswordHash(password string) (string, error) {
+func (PasswordCoder) CreatePasswordHash(password string) (string, error) {
 	hash, err := createHash(password, argon2id.DefaultParams)
 	if err != nil {
 		slog.Error("CreateHash", "error", err)
@@ -22,7 +24,7 @@ func CreatePasswordHash(password string) (string, error) {
 }
 
 // VerifyPassword checks that the password matches the stored hash.
-func VerifyPassword(password, hashedPassword string) bool {
+func (PasswordCoder) VerifyPassword(password, hashedPassword string) bool {
 	match, err := comparePasswordAndHash(password, hashedPassword)
 	if err != nil {
 		slog.Error("ComparePasswordAndHash", "error", err)

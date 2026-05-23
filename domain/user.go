@@ -9,15 +9,13 @@ const (
 )
 
 type CreateUser struct {
-	Login    string
-	Password string `json:"password"`
-	Role     UserRole
+	Login    string   `json:"login"`
+	Password string   `json:"password"`
+	Role     UserRole `json:"role"`
 }
 
 type UpdateUser struct {
-	Login    string
-	Password string `json:"password"`
-	Role     UserRole
+	CreateUser
 }
 
 type User struct {

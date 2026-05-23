@@ -9,7 +9,7 @@ import (
 
 // UserRepo provides user CRUD operations.
 type UserRepo interface {
-	GetAll(ctx context.Context, tx pgx.Tx) ([]domain.User, error)
+	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error)
 	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
 	Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
@@ -37,8 +37,8 @@ func NewUserUseCase(userRepo UserRepo, pswdService UserPswdService) *UserUseCase
 }
 
 // GetAll returns all users.
-func (u *UserUseCase) GetAll(ctx context.Context) ([]domain.User, error) {
-	return u.userRepo.GetAll(ctx, nil)
+func (u *UserUseCase) GetAll(ctx context.Context, page, limit int) ([]domain.User, error) {
+	return u.userRepo.GetAll(ctx, page, limit, nil)
 }
 
 // GetByUUID returns a user by UUID.

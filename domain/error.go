@@ -9,5 +9,6 @@ var (
 	ErrShortPassword        error = errors.New("Пароль должен быть равен или длинее 6 символов")
 	ErrLimitIsBiggerThen100 error = errors.New("Лимит должен быть меньше или равен 100")
 	ErrDurationFromTo       error = errors.New("Максимальная разница между датой начала(from) и датой конца(to) не должна быть больше чем 31 день")
-	ErrFilesLoad         error = errors.New("Максимальное количество файлов для загрузки 10, максимальный обем одного файла 15МБ")
+	ErrFilesLoad            error = errors.New("Максимальное количество файлов для загрузки 10, максимальный обем одного файла 15МБ")
+	ErrUnknownObject        error = errors.New("Неизвестный объект")
 )
