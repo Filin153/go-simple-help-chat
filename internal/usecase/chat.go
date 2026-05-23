@@ -12,8 +12,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-var getAllNewTickerDuration = time.Second
-
 type MsgCacheInterface interface {
 	Set(ctx context.Context, userUUID string, val *domain.Msg) error
 	Get(ctx context.Context, userUUID string) ([]*domain.Msg, bool, error)
@@ -51,9 +49,10 @@ type ChatUseCase struct {
 	mainRepo            MainRepo
 	encryption          EncryptionInterface
 	longPullReadTimeOut time.Duration
+	pollInterval        time.Duration
 }
 
-func NewChatUseCase(msgCache MsgCacheInterface, s3 S3Interface, msgRepo MsgRepo, ticketRepo TicketRepo, mainRepo MainRepo, encryption EncryptionInterface, longPullReadTimeOut time.Duration) *ChatUseCase {
+func NewChatUseCase(msgCache MsgCacheInterface, s3 S3Interface, msgRepo MsgRepo, ticketRepo TicketRepo, mainRepo MainRepo, encryption EncryptionInterface, longPullReadTimeOut, pollInterval time.Duration) *ChatUseCase {
 	return &ChatUseCase{
 		msgCache:            msgCache,
 		s3:                  s3,
@@ -62,6 +61,7 @@ func NewChatUseCase(msgCache MsgCacheInterface, s3 S3Interface, msgRepo MsgRepo,
 		mainRepo:            mainRepo,
 		encryption:          encryption,
 		longPullReadTimeOut: longPullReadTimeOut,
+		pollInterval:        pollInterval,
 	}
 }
 
@@ -139,7 +139,7 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID string) (res []*do
 	timeOutContext, cf := context.WithTimeout(ctx, c.longPullReadTimeOut)
 	defer cf()
 
-	ticker := time.NewTicker(getAllNewTickerDuration)
+	ticker := time.NewTicker(c.pollInterval)
 	defer ticker.Stop()
 
 	for {

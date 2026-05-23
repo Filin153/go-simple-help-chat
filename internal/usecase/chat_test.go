@@ -257,7 +257,7 @@ func newChatFixture() *chatFixture {
 		},
 	}
 
-	useCase := NewChatUseCase(msgCache, s3, msgRepo, ticketRepo, mainRepo, encryption, 20*time.Millisecond)
+	useCase := NewChatUseCase(msgCache, s3, msgRepo, ticketRepo, mainRepo, encryption, 20*time.Millisecond, time.Millisecond)
 
 	return &chatFixture{
 		useCase:    useCase,
@@ -575,11 +575,7 @@ func Test_ChatUseCase_GetAllNew_ContextDone(t *testing.T) {
 
 func Test_ChatUseCase_GetAllNew_CacheHit(t *testing.T) {
 	f := newChatFixture()
-	origTickerDuration := getAllNewTickerDuration
-	getAllNewTickerDuration = time.Millisecond
-	t.Cleanup(func() {
-		getAllNewTickerDuration = origTickerDuration
-	})
+	f.useCase.pollInterval = time.Millisecond
 	want := []*domain.Msg{
 		{ID: 1, TicketID: f.msg.TicketID, EncryptedText: []byte("enc:cache")},
 	}
@@ -604,11 +600,7 @@ func Test_ChatUseCase_GetAllNew_CacheHit(t *testing.T) {
 
 func Test_ChatUseCase_GetAllNew_CacheErrorUnreadError(t *testing.T) {
 	f := newChatFixture()
-	origTickerDuration := getAllNewTickerDuration
-	getAllNewTickerDuration = time.Millisecond
-	t.Cleanup(func() {
-		getAllNewTickerDuration = origTickerDuration
-	})
+	f.useCase.pollInterval = time.Millisecond
 	wantErr := errors.New("unread error")
 	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		return nil, false, errors.New("cache error")
@@ -637,11 +629,7 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadError(t *testing.T) {
 
 func Test_ChatUseCase_GetAllNew_CacheErrorUnreadFound(t *testing.T) {
 	f := newChatFixture()
-	origTickerDuration := getAllNewTickerDuration
-	getAllNewTickerDuration = time.Millisecond
-	t.Cleanup(func() {
-		getAllNewTickerDuration = origTickerDuration
-	})
+	f.useCase.pollInterval = time.Millisecond
 	want := []*domain.Msg{
 		{ID: 5, TicketID: f.msg.TicketID, EncryptedText: []byte("enc:fallback")},
 	}
@@ -666,11 +654,7 @@ func Test_ChatUseCase_GetAllNew_CacheErrorUnreadFound(t *testing.T) {
 
 func Test_ChatUseCase_GetAllNew_CacheMissTimeout(t *testing.T) {
 	f := newChatFixture()
-	origTickerDuration := getAllNewTickerDuration
-	getAllNewTickerDuration = time.Millisecond
-	t.Cleanup(func() {
-		getAllNewTickerDuration = origTickerDuration
-	})
+	f.useCase.pollInterval = time.Millisecond
 	f.useCase.longPullReadTimeOut = 5 * time.Millisecond
 	cacheReads := 0
 	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
@@ -695,11 +679,7 @@ func Test_ChatUseCase_GetAllNew_CacheMissTimeout(t *testing.T) {
 
 func Test_ChatUseCase_GetAllNew_DecryptError(t *testing.T) {
 	f := newChatFixture()
-	origTickerDuration := getAllNewTickerDuration
-	getAllNewTickerDuration = time.Millisecond
-	t.Cleanup(func() {
-		getAllNewTickerDuration = origTickerDuration
-	})
+	f.useCase.pollInterval = time.Millisecond
 	wantErr := errors.New("decrypt error")
 	f.msgCache.getFn = func(_ context.Context, _ string) ([]*domain.Msg, bool, error) {
 		return []*domain.Msg{{ID: 1, TicketID: f.msg.TicketID, EncryptedText: []byte("boom")}}, true, nil
