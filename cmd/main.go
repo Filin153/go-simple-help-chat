@@ -43,8 +43,8 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	}
 
 	userRepo := repository.NewUserRepo(baseRepo)
-	refreshTokenRepo := stubRefreshTokenRepo{}
-	departmentRepo := stubDepartmentRepo{}
+	refreshTokenRepo := repository.NewRefreshTokenRepo(baseRepo)
+	departmentRepo := repository.NewDepartmentRepo(baseRepo)
 	scheduleRepo := stubScheduleRepo{}
 	msgRepo := stubMsgRepo{}
 	ticketRepo := stubTicketRepo{}

@@ -14,7 +14,7 @@ const (
 
 type DepartmentRepo interface {
 	Create(ctx context.Context, createDepartment domain.CreateDepartment, tx pgx.Tx) (int, error)
-	GetAll(ctx context.Context, page, offset, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
+	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
 	GetByID(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error)
 	Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error
 }
@@ -74,11 +74,11 @@ func (d *DepartmentUseCase) Create(ctx context.Context, createDepartment domain.
 	return nil
 }
 
-func (d *DepartmentUseCase) GetAll(ctx context.Context, page, offset, limit int) ([]domain.DepartmentWithOnScheduleeDay, error) {
+func (d *DepartmentUseCase) GetAll(ctx context.Context, page, limit int) ([]domain.DepartmentWithOnScheduleeDay, error) {
 	if limit > 100 {
 		return nil, domain.ErrLimitIsBiggerThen100
 	}
-	return d.departmentRepo.GetAll(ctx, page, offset, limit, nil)
+	return d.departmentRepo.GetAll(ctx, page, limit, nil)
 }
 
 func (d *DepartmentUseCase) GetByID(ctx context.Context, id int) (domain.Department, error) {
