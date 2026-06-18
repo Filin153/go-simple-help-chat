@@ -12,6 +12,8 @@ import (
 	"shc/internal/usecase"
 )
 
+var newRepository = repository.NewRepository
+
 type App struct {
 	Repository        *repository.Repository
 	MsgCache          *cache.MsgCache
@@ -33,7 +35,7 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	jwtService := service.NewJWT(cfg.JWT.Issuer, []byte(cfg.JWT.SignKey))
 	encryptionService := service.NewAES256GCM(cfg.Encryption.Key32)
 
-	baseRepo, err := repository.NewRepository(ctx, cfg.PostgresDSN)
+	baseRepo, err := newRepository(ctx, cfg.PostgresDSN)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +81,15 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 }
 
 type authHTTPAdapter struct {
-	auth *usecase.AuthUseCase
+	auth authUseCase
+}
+
+type authUseCase interface {
+	Login(ctx context.Context, login, password string) (*domain.JWTTokens, error)
+	LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error)
+	Logout(ctx context.Context, accessToken string) error
+	GetAccessTokenClaims(accessToken string) (*service.AccessTokenClaims, error)
+	Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error)
 }
 
 func (a authHTTPAdapter) Login(ctx context.Context, login, password string) (*domain.JWTTokens, error) {

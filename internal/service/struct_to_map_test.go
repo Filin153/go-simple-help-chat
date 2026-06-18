@@ -17,6 +17,11 @@ type structToMapTagPriorityFixture struct {
 	Value string `db:"db_value" json:"json_value"`
 }
 
+type structToMapFallbackFixture struct {
+	Value string
+	Skip  string `db:"-"`
+}
+
 func Test_StructToMap(t *testing.T) {
 	workFrom := time.Date(2026, time.June, 18, 9, 0, 0, 0, time.UTC)
 
@@ -41,6 +46,21 @@ func Test_StructToMap_DBTagPriority(t *testing.T) {
 
 	want := map[string]any{
 		"db_value": "value",
+	}
+
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected map: got=%v want=%v", got, want)
+	}
+}
+
+func Test_StructToMap_FallbackAndIgnore(t *testing.T) {
+	got := StructToMap(structToMapFallbackFixture{
+		Value: "value",
+		Skip:  "skip",
+	}, nil)
+
+	want := map[string]any{
+		"Value": "value",
 	}
 
 	if !reflect.DeepEqual(got, want) {

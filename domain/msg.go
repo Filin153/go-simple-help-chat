@@ -45,5 +45,5 @@ type Msg struct {
 	TicketID      int              `db:"ticket_id" json:"ticket_id"`
 	Status        MsgStatus        `db:"status" json:"status"`
 	CreateAt      time.Time        `db:"create_at" json:"create_at"`
-	Files         []MsgFileContent `json:"files"`
+	Files         []MsgFileContent `db:"-" json:"files"`
 }
