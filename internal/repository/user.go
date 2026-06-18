@@ -18,8 +18,11 @@ func NewUserRepo(repo *Repository) *UserRepo {
 }
 
 func (u *UserRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error) {
-	const query = `SELECT * FROM "users" LIMIT $1 OFFSET $2;`
-	rows, err := u.repo.GetDB(nil).Query(ctx, query, limit, getOffset(page, limit))
+	const query = `SELECT "uuid", "login", "password", "role"
+FROM "users"
+ORDER BY "uuid" ASC
+LIMIT $1 OFFSET $2;`
+	rows, err := u.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
 	if err != nil {
 		return []domain.User{}, err
 	}
@@ -34,7 +37,7 @@ func (u *UserRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]do
 }
 
 func (u *UserRepo) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error) {
-	const query = `SELECT * FROM "users" WHERE "uuid"=$1;`
+	const query = `SELECT "uuid", "login", "password", "role" FROM "users" WHERE "uuid"=$1;`
 	rows, err := u.repo.GetDB(tx).Query(ctx, query, uuid)
 	if err != nil {
 		return nil, err
@@ -50,7 +53,7 @@ func (u *UserRepo) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*doma
 }
 
 func (u *UserRepo) GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error) {
-	const query = `SELECT * FROM "users" WHERE "login"=$1;`
+	const query = `SELECT "uuid", "login", "password", "role" FROM "users" WHERE "login"=$1;`
 	rows, err := u.repo.GetDB(tx).Query(ctx, query, login)
 	if err != nil {
 		return nil, err

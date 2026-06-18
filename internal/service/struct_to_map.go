@@ -3,6 +3,7 @@ package service
 import (
 	"reflect"
 	"slices"
+	"strings"
 )
 
 func StructToMap(s any, execute []string) map[string]any {
@@ -16,11 +17,36 @@ func StructToMap(s any, execute []string) map[string]any {
 
 	res := make(map[string]any, v.NumField())
 	for i := 0; i < v.NumField(); i++ {
-		filed := t.Field(i)
-		if !slices.Contains(execute, filed.Name) {
-			res[filed.Name] = v.Field(i).Interface()
+		field := t.Field(i)
+		key := structFieldKey(field)
+		if key == "-" {
+			continue
+		}
+		if slices.Contains(execute, key) || slices.Contains(execute, field.Name) {
+			continue
+		}
+
+		value := v.Field(i)
+		if !value.IsZero() {
+			res[key] = value.Interface()
 		}
 	}
 
 	return res
+}
+
+func structFieldKey(field reflect.StructField) string {
+	for _, tagName := range []string{"db", "json"} {
+		tagValue, ok := field.Tag.Lookup(tagName)
+		if !ok {
+			continue
+		}
+
+		name, _, _ := strings.Cut(tagValue, ",")
+		if name != "" {
+			return name
+		}
+	}
+
+	return field.Name
 }

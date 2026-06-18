@@ -79,7 +79,18 @@ func (s *ScheduleRepo) ExistByDepartmentID(ctx context.Context, departmentID int
 }
 
 func (s *ScheduleRepo) GetFromTo(ctx context.Context, departmentID int, from, to time.Time, tx pgx.Tx) ([]domain.Schedule, error) {
-	const query = `SELECT * FROM "schedules" WHERE "department_id"=$1 AND "work_from" >= $2 AND "work_to" <= $3;`
+	const query = `SELECT
+	"id",
+	"department_id",
+	"name",
+	"work_from",
+	"work_to",
+	"break_from",
+	"break_to",
+	"is_week_end"
+FROM "schedules"
+WHERE "department_id"=$1 AND "work_from" >= $2 AND "work_to" <= $3
+ORDER BY "work_from" ASC, "id" ASC;`
 	rows, err := s.repo.GetDB(tx).Query(ctx, query, departmentID, from, to)
 	if err != nil {
 		return nil, err

@@ -21,12 +21,12 @@ func useDefaultPasswordHooks(t *testing.T) {
 
 func Test_PASSWORD_OK(t *testing.T) {
 	password := "pa$$word"
-	hash, err := CreatePasswordHash(password)
+	hash, err := (PasswordCoder{}).CreatePasswordHash(password)
 	if err != nil {
 		t.Fatalf("CreatePasswordHash returned error: %v", err)
 	}
 
-	match := VerifyPassword(password, hash)
+	match := (PasswordCoder{}).VerifyPassword(password, hash)
 
 	if !match {
 		t.Fatalf("same password must match; got=%t", match)
@@ -34,19 +34,19 @@ func Test_PASSWORD_OK(t *testing.T) {
 }
 
 func Test_PASSWORD_MISMATCH(t *testing.T) {
-	hash, err := CreatePasswordHash("pa$$word")
+	hash, err := (PasswordCoder{}).CreatePasswordHash("pa$$word")
 	if err != nil {
 		t.Fatalf("CreatePasswordHash returned error: %v", err)
 	}
 
-	match := VerifyPassword("not-the-same-password", hash)
+	match := (PasswordCoder{}).VerifyPassword("not-the-same-password", hash)
 	if match {
 		t.Fatal("different password must not match")
 	}
 }
 
 func Test_PASSWORD_INVALID_HASH(t *testing.T) {
-	match := VerifyPassword("pa$$word", "invalid-hash")
+	match := (PasswordCoder{}).VerifyPassword("pa$$word", "invalid-hash")
 	if match {
 		t.Fatal("invalid hash must return false")
 	}
@@ -58,7 +58,7 @@ func Test_PASSWORD_HASH_ERROR(t *testing.T) {
 		return "", errors.New("create hash error")
 	}
 
-	hash, err := CreatePasswordHash("pa$$word")
+	hash, err := (PasswordCoder{}).CreatePasswordHash("pa$$word")
 	if err == nil {
 		t.Fatal("CreatePasswordHash expected error")
 	}
@@ -73,7 +73,7 @@ func Test_PASSWORD_VERIFY_ERROR(t *testing.T) {
 		return false, errors.New("compare error")
 	}
 
-	match := VerifyPassword("pa$$word", "hash")
+	match := (PasswordCoder{}).VerifyPassword("pa$$word", "hash")
 	if match {
 		t.Fatal("VerifyPassword must return false on compare error")
 	}

@@ -18,16 +18,16 @@ func NewRefreshTokenRepo(repo *Repository) *RefreshTokenRepo {
 }
 
 func (r *RefreshTokenRepo) Get(ctx context.Context, jti string, tx pgx.Tx) (*domain.RefreshToken, error) {
-	const query = `SELECT * FROM "refresh_tokens" WHERE jti = $1;`
+	const query = `SELECT "jti", "user_uuid" FROM "refresh_tokens" WHERE "jti" = $1;`
 	rows, err := r.repo.GetDB(tx).Query(ctx, query, jti)
 	if err != nil {
-		return &domain.RefreshToken{}, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	res, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[domain.RefreshToken])
 	if err != nil {
-		return &domain.RefreshToken{}, err
+		return nil, err
 	}
 
 	return &res, nil

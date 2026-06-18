@@ -13,7 +13,7 @@ import (
 
 type departmentRepoMock struct {
 	createFn  func(ctx context.Context, createDepartment domain.CreateDepartment, tx pgx.Tx) (int, error)
-	getAllFn  func(ctx context.Context, page, offset, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
+	getAllFn  func(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
 	getByIDFn func(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error)
 	updateFn  func(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error
 }
@@ -22,8 +22,8 @@ func (d *departmentRepoMock) Create(ctx context.Context, createDepartment domain
 	return d.createFn(ctx, createDepartment, tx)
 }
 
-func (d *departmentRepoMock) GetAll(ctx context.Context, page, offset, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
-	return d.getAllFn(ctx, page, offset, limit, tx)
+func (d *departmentRepoMock) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
+	return d.getAllFn(ctx, page, limit, tx)
 }
 
 func (d *departmentRepoMock) GetByID(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error) {
@@ -126,11 +126,11 @@ func newDepartmentFixture() *departmentFixture {
 			}
 			return department.ID, nil
 		},
-		getAllFn: func(_ context.Context, page, offset, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
+		getAllFn: func(_ context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
 			if tx != nil {
 				return nil, errors.New("expected nil tx")
 			}
-			if page != 2 || offset != 20 || limit != 10 {
+			if page != 2 || limit != 10 {
 				return nil, errors.New("unexpected pagination")
 			}
 			return departments, nil
@@ -337,7 +337,7 @@ func Test_DepartmentUseCase_Create_OK(t *testing.T) {
 func Test_DepartmentUseCase_GetAll_LimitError(t *testing.T) {
 	f := newDepartmentFixture()
 
-	departments, err := f.useCase.GetAll(context.Background(), 1, 0, 101)
+	departments, err := f.useCase.GetAll(context.Background(), 1, 101)
 	if !errors.Is(err, domain.ErrLimitIsBiggerThen100) {
 		t.Fatalf("expected limit error, got=%v", err)
 	}
@@ -349,7 +349,7 @@ func Test_DepartmentUseCase_GetAll_LimitError(t *testing.T) {
 func Test_DepartmentUseCase_GetAll_OK(t *testing.T) {
 	f := newDepartmentFixture()
 
-	departments, err := f.useCase.GetAll(context.Background(), 2, 20, 10)
+	departments, err := f.useCase.GetAll(context.Background(), 2, 10)
 	if err != nil {
 		t.Fatalf("GetAll returned error: %v", err)
 	}

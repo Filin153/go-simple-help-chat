@@ -12,9 +12,9 @@ import (
 )
 
 type scheduleRepoMock struct {
-	createFn             func(ctx context.Context, createSchedule *domain.CreateSchedule, tx pgx.Tx) error
-	updateFn             func(ctx context.Context, updateSchedule *domain.UpdateSchedule, tx pgx.Tx) error
-	deleteFn             func(ctx context.Context, id int, tx pgx.Tx) error
+	createFn              func(ctx context.Context, createSchedule *domain.CreateSchedule, tx pgx.Tx) error
+	updateFn              func(ctx context.Context, updateSchedule *domain.UpdateSchedule, tx pgx.Tx) error
+	deleteFn              func(ctx context.Context, id int, tx pgx.Tx) error
 	existByDepartmentIDFn func(ctx context.Context, departmentID int) (bool, error)
 }
 
@@ -288,7 +288,8 @@ func Test_ScheduleUseCase_GenerateBaseSchedule_OK(t *testing.T) {
 		t.Fatalf("unexpected schedule len: got=%d want=365", len(items))
 	}
 
-	start := time.Date(-1, time.January, 1, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
+	start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	first := items[0]
 	if first.DepartmentID != 15 {
 		t.Fatalf("unexpected department id: got=%d want=15", first.DepartmentID)

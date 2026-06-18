@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"shc/domain"
+	"sort"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -80,23 +81,38 @@ func getUpdateQuery(table string, updateColumn map[string]any, whereAnd map[stri
 		return "", nil, domain.ErrEmptyObject
 	}
 
+	table = pgx.Identifier{table}.Sanitize()
 	paramNumber := 1
 	args := make([]any, 0, len(updateColumn))
 	setQueryValues := make([]string, 0, len(updateColumn))
 	whereAndQueryValues := make([]string, 0, len(whereAnd))
-	const query = make([]string, 0, 7)
+	query := make([]string, 0, 7)
 	query = append(query, "UPDATE")
 	query = append(query, table)
 	query = append(query, "SET")
 
-	for column, arg := range updateColumn {
+	updateColumns := make([]string, 0, len(updateColumn))
+	for column := range updateColumn {
+		updateColumns = append(updateColumns, column)
+	}
+	sort.Strings(updateColumns)
+
+	for _, column := range updateColumns {
+		arg := updateColumn[column]
 		column = pgx.Identifier{column}.Sanitize()
 		setQueryValues = append(setQueryValues, fmt.Sprintf("%s = $%d", column, paramNumber))
 		args = append(args, arg)
 		paramNumber++
 	}
 
-	for column, arg := range whereAnd {
+	whereColumns := make([]string, 0, len(whereAnd))
+	for column := range whereAnd {
+		whereColumns = append(whereColumns, column)
+	}
+	sort.Strings(whereColumns)
+
+	for _, column := range whereColumns {
+		arg := whereAnd[column]
 		column = pgx.Identifier{column}.Sanitize()
 		whereAndQueryValues = append(whereAndQueryValues, fmt.Sprintf("%s = $%d", column, paramNumber))
 		args = append(args, arg)
@@ -104,9 +120,10 @@ func getUpdateQuery(table string, updateColumn map[string]any, whereAnd map[stri
 	}
 
 	query = append(query, strings.Join(setQueryValues, ", "))
-	query = append(query, "WHERE")
-	query = append(query, strings.Join(whereAndQueryValues, " AND "))
-	query = append(query, ";")
+	if len(whereAndQueryValues) > 0 {
+		query = append(query, "WHERE")
+		query = append(query, strings.Join(whereAndQueryValues, " AND "))
+	}
 
-	return strings.Join(query, " "), args, nil
+	return strings.Join(query, " ") + ";", args, nil
 }

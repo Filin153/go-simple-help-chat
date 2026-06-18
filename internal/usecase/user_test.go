@@ -19,7 +19,7 @@ func (m *userMainRepoMock) CreateSession(ctx context.Context, options pgx.TxOpti
 }
 
 type userCRUDRepoMock struct {
-	getAllFn       func(ctx context.Context, tx pgx.Tx) ([]domain.User, error)
+	getAllFn       func(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error)
 	getByUUIDFn    func(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
 	getByLoginFn   func(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
 	createFn       func(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
@@ -27,8 +27,8 @@ type userCRUDRepoMock struct {
 	deleteByUUIDFn func(ctx context.Context, uuid string, tx pgx.Tx) error
 }
 
-func (r *userCRUDRepoMock) GetAll(ctx context.Context, tx pgx.Tx) ([]domain.User, error) {
-	return r.getAllFn(ctx, tx)
+func (r *userCRUDRepoMock) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error) {
+	return r.getAllFn(ctx, page, limit, tx)
 }
 
 func (r *userCRUDRepoMock) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error) {
@@ -83,9 +83,12 @@ func newUserFixture() *userFixture {
 		},
 	}
 	userRepo := &userCRUDRepoMock{
-		getAllFn: func(_ context.Context, tx pgx.Tx) ([]domain.User, error) {
+		getAllFn: func(_ context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error) {
 			if tx != nil {
 				return nil, errors.New("expected nil tx")
+			}
+			if page != 2 || limit != 10 {
+				return nil, errors.New("unexpected pagination")
 			}
 			return users, nil
 		},
@@ -157,7 +160,7 @@ func Test_NewUserUseCase(t *testing.T) {
 func Test_UserUseCase_GetAll(t *testing.T) {
 	f := newUserFixture()
 
-	users, err := f.useCase.GetAll(context.Background())
+	users, err := f.useCase.GetAll(context.Background(), 2, 10)
 	if err != nil {
 		t.Fatalf("GetAll returned error: %v", err)
 	}
@@ -274,7 +277,9 @@ func Test_UserUseCase_UpdateByUUID_HashError(t *testing.T) {
 		return "", wantErr
 	}
 
-	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{Login: "login", Password: "password", Role: domain.UserRoleClient})
+	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{
+		CreateUser: domain.CreateUser{Login: "login", Password: "password", Role: domain.UserRoleClient},
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected hash error, got=%v", err)
 	}
@@ -287,7 +292,9 @@ func Test_UserUseCase_UpdateByUUID_RepoError(t *testing.T) {
 		return wantErr
 	}
 
-	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{Login: "login", Password: "password", Role: domain.UserRoleClient})
+	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{
+		CreateUser: domain.CreateUser{Login: "login", Password: "password", Role: domain.UserRoleClient},
+	})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected repo error, got=%v", err)
 	}
@@ -310,7 +317,9 @@ func Test_UserUseCase_UpdateByUUID_OK(t *testing.T) {
 		return nil
 	}
 
-	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{Login: "login", Password: "password", Role: domain.UserRoleClient})
+	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{
+		CreateUser: domain.CreateUser{Login: "login", Password: "password", Role: domain.UserRoleClient},
+	})
 	if err != nil {
 		t.Fatalf("UpdateByUUID returned error: %v", err)
 	}
@@ -336,7 +345,9 @@ func Test_UserUseCase_UpdateByUUID_WithoutPassword(t *testing.T) {
 		return nil
 	}
 
-	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{Login: "login", Password: "", Role: domain.UserRoleClient})
+	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{
+		CreateUser: domain.CreateUser{Login: "login", Password: "", Role: domain.UserRoleClient},
+	})
 	if err != nil {
 		t.Fatalf("UpdateByUUID returned error: %v", err)
 	}
@@ -358,7 +369,9 @@ func Test_UserUseCase_UpdateByUUID_ShortPassword(t *testing.T) {
 		return nil
 	}
 
-	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{Login: "login", Password: "12345", Role: domain.UserRoleClient})
+	err := f.useCase.UpdateByUUID(context.Background(), f.user.UUID, domain.UpdateUser{
+		CreateUser: domain.CreateUser{Login: "login", Password: "12345", Role: domain.UserRoleClient},
+	})
 	if !errors.Is(err, domain.ErrShortPassword) {
 		t.Fatalf("expected short password error, got=%v", err)
 	}
