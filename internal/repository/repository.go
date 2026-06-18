@@ -2,6 +2,9 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"shc/domain"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -70,4 +73,40 @@ func (r *Repository) GetDB(tx pgx.Tx) Execer {
 
 func getOffset(page, limit int) int {
 	return (page - 1) * limit
+}
+
+func getUpdateQuery(table string, updateColumn map[string]any, whereAnd map[string]any) (string, []any, error) {
+	if len(updateColumn) == 0 {
+		return "", nil, domain.ErrEmptyObject
+	}
+
+	paramNumber := 1
+	args := make([]any, 0, len(updateColumn))
+	setQueryValues := make([]string, 0, len(updateColumn))
+	whereAndQueryValues := make([]string, 0, len(whereAnd))
+	const query = make([]string, 0, 7)
+	query = append(query, "UPDATE")
+	query = append(query, table)
+	query = append(query, "SET")
+
+	for column, arg := range updateColumn {
+		column = pgx.Identifier{column}.Sanitize()
+		setQueryValues = append(setQueryValues, fmt.Sprintf("%s = $%d", column, paramNumber))
+		args = append(args, arg)
+		paramNumber++
+	}
+
+	for column, arg := range whereAnd {
+		column = pgx.Identifier{column}.Sanitize()
+		whereAndQueryValues = append(whereAndQueryValues, fmt.Sprintf("%s = $%d", column, paramNumber))
+		args = append(args, arg)
+		paramNumber++
+	}
+
+	query = append(query, strings.Join(setQueryValues, ", "))
+	query = append(query, "WHERE")
+	query = append(query, strings.Join(whereAndQueryValues, " AND "))
+	query = append(query, ";")
+
+	return strings.Join(query, " "), args, nil
 }

@@ -18,7 +18,7 @@ func NewRefreshTokenRepo(repo *Repository) *RefreshTokenRepo {
 }
 
 func (r *RefreshTokenRepo) Get(ctx context.Context, jti string, tx pgx.Tx) (*domain.RefreshToken, error) {
-	query := `SELECT * FROM "refresh_tokens" WHERE jti = $1;`
+	const query = `SELECT * FROM "refresh_tokens" WHERE jti = $1;`
 	rows, err := r.repo.GetDB(tx).Query(ctx, query, jti)
 	if err != nil {
 		return &domain.RefreshToken{}, err
@@ -34,7 +34,7 @@ func (r *RefreshTokenRepo) Get(ctx context.Context, jti string, tx pgx.Tx) (*dom
 }
 
 func (r *RefreshTokenRepo) Create(ctx context.Context, jti, userUUID string, tx pgx.Tx) error {
-	query := `INSERT INTO "refresh_tokens"("jti", "user_uuid") VALUES ($1, $2);`
+	const query = `INSERT INTO "refresh_tokens"("jti", "user_uuid") VALUES ($1, $2);`
 	_, err := r.repo.GetDB(tx).Exec(ctx, query, jti, userUUID)
 	if err != nil {
 		return err
@@ -43,7 +43,7 @@ func (r *RefreshTokenRepo) Create(ctx context.Context, jti, userUUID string, tx 
 }
 
 func (r *RefreshTokenRepo) DeleteByUserUUID(ctx context.Context, userUUID string, tx pgx.Tx) error {
-	query := `DELETE FROM "refresh_tokens" WHERE user_uuid = $1;`
+	const query = `DELETE FROM "refresh_tokens" WHERE user_uuid = $1;`
 	_, err := r.repo.GetDB(tx).Exec(ctx, query, userUUID)
 	if err != nil {
 		return err
@@ -52,7 +52,7 @@ func (r *RefreshTokenRepo) DeleteByUserUUID(ctx context.Context, userUUID string
 }
 
 func (r *RefreshTokenRepo) DeleteByJTI(ctx context.Context, jti string, tx pgx.Tx) error {
-	query := `DELETE FROM "refresh_tokens" WHERE jti = $1;`
+	const query = `DELETE FROM "refresh_tokens" WHERE jti = $1;`
 	_, err := r.repo.GetDB(tx).Exec(ctx, query, jti)
 	if err != nil {
 		return err

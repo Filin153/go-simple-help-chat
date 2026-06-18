@@ -11,4 +11,6 @@ var (
 	ErrDurationFromTo       error = errors.New("Максимальная разница между датой начала(from) и датой конца(to) не должна быть больше чем 31 день")
 	ErrFilesLoad            error = errors.New("Максимальное количество файлов для загрузки 10, максимальный обем одного файла 15МБ")
 	ErrUnknownObject        error = errors.New("Неизвестный объект")
+	ErrEmptyObject          error = errors.New("Пустой объект")
+	ErrRowsAffected          error = errors.New("Неудалось найти оекты и выполнить действие")
 )

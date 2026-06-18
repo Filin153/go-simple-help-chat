@@ -19,7 +19,7 @@ func NewDepartmentRepo(repo *Repository) *DepartmentRepo {
 }
 
 func (d *DepartmentRepo) Create(ctx context.Context, createDepartment domain.CreateDepartment, tx pgx.Tx) (int, error) {
-	query := `INSERT INTO "departments"("name") VALUES ($1) RETURNING "id";`
+	const query = `INSERT INTO "departments"("name") VALUES ($1) RETURNING "id";`
 	var res int
 	err := d.repo.GetDB(tx).QueryRow(ctx, query, createDepartment.Name).Scan(&res)
 	if err != nil {
@@ -29,7 +29,7 @@ func (d *DepartmentRepo) Create(ctx context.Context, createDepartment domain.Cre
 }
 
 func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
-	query := `SELECT * FROM departments LIMIT $2 OFFSET $1;`
+	const query = `SELECT * FROM departments LIMIT $2 OFFSET $1;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
 	if err != nil {
 		return []domain.DepartmentWithOnScheduleeDay{}, err
@@ -44,7 +44,7 @@ func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx)
 }
 
 func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error) {
-	query := `SELECT * FROM "departments" WHERE "id"=$1;`
+	const query = `SELECT * FROM "departments" WHERE "id"=$1;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, id)
 	if err != nil {
 		return domain.Department{}, err
