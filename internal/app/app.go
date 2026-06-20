@@ -12,8 +12,6 @@ import (
 	"shc/internal/usecase"
 )
 
-var newRepository = repository.NewRepository
-
 type App struct {
 	Repository        *repository.Repository
 	MsgCache          *cache.MsgCache
@@ -35,7 +33,7 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	jwtService := service.NewJWT(cfg.JWT.Issuer, []byte(cfg.JWT.SignKey))
 	encryptionService := service.NewAES256GCM(cfg.Encryption.Key32)
 
-	baseRepo, err := newRepository(ctx, cfg.PostgresDSN)
+	baseRepo, err := repository.NewRepository(ctx, cfg.PostgresDSN)
 	if err != nil {
 		return nil, err
 	}
@@ -80,51 +78,3 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	}, nil
 }
 
-type authHTTPAdapter struct {
-	auth authUseCase
-}
-
-type authUseCase interface {
-	Login(ctx context.Context, login, password string) (*domain.JWTTokens, error)
-	LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error)
-	Logout(ctx context.Context, accessToken string) error
-	GetAccessTokenClaims(accessToken string) (*service.AccessTokenClaims, error)
-	Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error)
-}
-
-func (a authHTTPAdapter) Login(ctx context.Context, login, password string) (*domain.JWTTokens, error) {
-	return a.auth.Login(ctx, login, password)
-}
-
-func (a authHTTPAdapter) LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error) {
-	return a.auth.LoginClient(ctx, args...)
-}
-
-func (a authHTTPAdapter) Logout(ctx context.Context, accessToken string) error {
-	return a.auth.Logout(ctx, accessToken)
-}
-
-func (a authHTTPAdapter) GetAccessTokenClaims(ctx context.Context, accessToken string) error {
-	_, err := a.auth.GetAccessTokenClaims(accessToken)
-	return err
-}
-
-func (a authHTTPAdapter) Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error) {
-	return a.auth.Refresh(ctx, refreshToken)
-}
-
-type stubS3 struct{}
-
-func (stubS3) Save(context.Context, string, []byte) (string, error) {
-	return "", domain.ErrUnknownObject
-}
-
-func (stubS3) Delete(context.Context, string) error {
-	return domain.ErrUnknownObject
-}
-
-type stubOtherSystemLogin struct{}
-
-func (stubOtherSystemLogin) Login(context.Context, ...any) (string, map[any]any, error) {
-	return "", nil, domain.ErrUnknownObject
-}
