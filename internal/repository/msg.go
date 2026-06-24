@@ -20,13 +20,16 @@ func NewMsgRepo(repo *Repository) *MsgRepo {
 
 func (m *MsgRepo) Create(ctx context.Context, msg domain.CreateMsg, userUUID string, tx pgx.Tx) (*domain.Msg, error) {
 	const query = `INSERT INTO "messages"("user_uuid", "text", "ticket_id", "status") VALUES ($1, $2, $3, $4) RETURNING *;`
-	rows, err := m.repo.GetDB(tx).Query(ctx, query, userUUID, msg.Text, msg.TicketID, domain.MsgStatusSent)
+	rows, err := m.repo.GetDB(tx).Query(ctx, query, userUUID, msg.EncryptedText, msg.TicketID, domain.MsgStatusSent)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	res, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[domain.Msg])
+	if err != nil {
+		return nil, err
+	}
 
 	return &res, nil
 }
@@ -40,6 +43,9 @@ func (m *MsgRepo) CreateFile(ctx context.Context, msgID int, fileName, path stri
 	defer rows.Close()
 
 	res, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[domain.MsgFileContent])
+	if err != nil {
+		return nil, err
+	}
 
 	return &res, nil
 }

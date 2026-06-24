@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"shc/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -60,5 +59,13 @@ func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (domain
 }
 
 func (d *DepartmentRepo) Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error {
-	return fmt.Errorf("NEED TO DO")
+	const query = `UPDATE "departments" SET "name"=$2 WHERE "id"=$1;`
+	tag, err := d.repo.GetDB(tx).Exec(ctx, query, id, updateDepartment.Name)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return domain.ErrUnknownObject
+	}
+	return nil
 }

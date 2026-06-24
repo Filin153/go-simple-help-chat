@@ -66,7 +66,6 @@ func Test_DepartmentRepo(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
-
 		mock.ExpectQuery(`INSERT INTO "departments"`).
 			WithArgs("Support").
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(7))
@@ -78,32 +77,17 @@ func Test_DepartmentRepo(t *testing.T) {
 		expectMock(t, mock)
 	})
 
-	t.Run("CreateQueryError", func(t *testing.T) {
+	t.Run("CreateError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
 		wantErr := errors.New("query error")
-
 		mock.ExpectQuery(`INSERT INTO "departments"`).
 			WithArgs("Support").
 			WillReturnError(wantErr)
 
-		_, err := repo.Create(context.Background(), domain.CreateDepartment{Name: "Support"}, nil)
-		if !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("CreateScanError", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewDepartmentRepo(baseRepo)
-
-		mock.ExpectQuery(`INSERT INTO "departments"`).
-			WithArgs("Support").
-			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("bad"))
-
-		if _, err := repo.Create(context.Background(), domain.CreateDepartment{Name: "Support"}, nil); err == nil {
-			t.Fatal("expected scan error")
+		id, err := repo.Create(context.Background(), domain.CreateDepartment{Name: "Support"}, nil)
+		if !errors.Is(err, wantErr) || id != -1 {
+			t.Fatalf("unexpected create error result: id=%d err=%v", id, err)
 		}
 		expectMock(t, mock)
 	})
@@ -112,8 +96,7 @@ func Test_DepartmentRepo(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
 		now := time.Now()
-
-		mock.ExpectQuery(`FROM "departments" AS d`).
+		mock.ExpectQuery(`SELECT \* FROM departments`).
 			WithArgs(10, 10).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "work_from", "work_to", "is_week_end"}).
 				AddRow(1, "Support", now, now.Add(time.Hour), false))
@@ -129,14 +112,13 @@ func Test_DepartmentRepo(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
 		wantErr := errors.New("query error")
-
-		mock.ExpectQuery(`FROM "departments" AS d`).
+		mock.ExpectQuery(`SELECT \* FROM departments`).
 			WithArgs(10, 0).
 			WillReturnError(wantErr)
 
-		_, err := repo.GetAll(context.Background(), 1, 10, nil)
-		if !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		items, err := repo.GetAll(context.Background(), 1, 10, nil)
+		if !errors.Is(err, wantErr) || len(items) != 0 {
+			t.Fatalf("unexpected get all query error result: items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
 	})
@@ -144,13 +126,13 @@ func Test_DepartmentRepo(t *testing.T) {
 	t.Run("GetAllCollectError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
-
-		mock.ExpectQuery(`FROM "departments" AS d`).
+		mock.ExpectQuery(`SELECT \* FROM departments`).
 			WithArgs(10, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-		if _, err := repo.GetAll(context.Background(), 1, 10, nil); err == nil {
-			t.Fatal("expected collect error")
+		items, err := repo.GetAll(context.Background(), 1, 10, nil)
+		if err == nil || len(items) != 0 {
+			t.Fatalf("expected collect error, got items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
 	})
@@ -158,8 +140,7 @@ func Test_DepartmentRepo(t *testing.T) {
 	t.Run("GetByID", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
-
-		mock.ExpectQuery(`SELECT "id", "name" FROM "departments"`).
+		mock.ExpectQuery(`SELECT \* FROM "departments"`).
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"id", "name"}).AddRow(1, "Support"))
 
@@ -174,13 +155,11 @@ func Test_DepartmentRepo(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
 		wantErr := errors.New("query error")
+		mock.ExpectQuery(`SELECT \* FROM "departments"`).WithArgs(1).WillReturnError(wantErr)
 
-		mock.ExpectQuery(`SELECT "id", "name" FROM "departments"`).
-			WithArgs(1).
-			WillReturnError(wantErr)
-
-		if _, err := repo.GetByID(context.Background(), 1, nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		item, err := repo.GetByID(context.Background(), 1, nil)
+		if !errors.Is(err, wantErr) || item != (domain.Department{}) {
+			t.Fatalf("unexpected get by id query error result: item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
 	})
@@ -188,13 +167,13 @@ func Test_DepartmentRepo(t *testing.T) {
 	t.Run("GetByIDCollectError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
-
-		mock.ExpectQuery(`SELECT "id", "name" FROM "departments"`).
+		mock.ExpectQuery(`SELECT \* FROM "departments"`).
 			WithArgs(1).
 			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-		if _, err := repo.GetByID(context.Background(), 1, nil); err == nil {
-			t.Fatal("expected collect error")
+		item, err := repo.GetByID(context.Background(), 1, nil)
+		if err == nil || item != (domain.Department{}) {
+			t.Fatalf("expected collect error, got item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
 	})
@@ -215,7 +194,6 @@ func Test_DepartmentRepo(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				mock, baseRepo := newMockRepository(t)
 				repo := NewDepartmentRepo(baseRepo)
-
 				exp := mock.ExpectExec(`UPDATE "departments" SET "name"=\$2 WHERE "id"=\$1;`).
 					WithArgs(1, "Support")
 				if tt.err != nil {
@@ -225,13 +203,7 @@ func Test_DepartmentRepo(t *testing.T) {
 				}
 
 				err := repo.Update(context.Background(), 1, domain.UpdateDepartment{Name: "Support"}, nil)
-				if tt.wantErr == nil {
-					if err != nil {
-						t.Fatalf("unexpected error: %v", err)
-					}
-				} else if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
-					t.Fatalf("expected error %v, got=%v", tt.wantErr, err)
-				}
+				assertExpectedError(t, err, tt.wantErr)
 				expectMock(t, mock)
 			})
 		}
@@ -247,7 +219,6 @@ func Test_UserRepo(t *testing.T) {
 	t.Run("GetAll", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewUserRepo(baseRepo)
-
 		mock.ExpectQuery(`SELECT "uuid", "login", "password", "role"`).
 			WithArgs(10, 10).
 			WillReturnRows(userRows())
@@ -263,13 +234,13 @@ func Test_UserRepo(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewUserRepo(baseRepo)
 		wantErr := errors.New("query error")
-
 		mock.ExpectQuery(`SELECT "uuid", "login", "password", "role"`).
 			WithArgs(10, 0).
 			WillReturnError(wantErr)
 
-		if _, err := repo.GetAll(context.Background(), 1, 10, nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		users, err := repo.GetAll(context.Background(), 1, 10, nil)
+		if !errors.Is(err, wantErr) || len(users) != 0 {
+			t.Fatalf("unexpected get all query error result: users=%v err=%v", users, err)
 		}
 		expectMock(t, mock)
 	})
@@ -277,13 +248,13 @@ func Test_UserRepo(t *testing.T) {
 	t.Run("GetAllCollectError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewUserRepo(baseRepo)
-
 		mock.ExpectQuery(`SELECT "uuid", "login", "password", "role"`).
 			WithArgs(10, 0).
 			WillReturnRows(pgxmock.NewRows([]string{"uuid"}).AddRow("uuid-1"))
 
-		if _, err := repo.GetAll(context.Background(), 1, 10, nil); err == nil {
-			t.Fatal("expected collect error")
+		users, err := repo.GetAll(context.Background(), 1, 10, nil)
+		if err == nil || len(users) != 0 {
+			t.Fatalf("expected collect error, got users=%v err=%v", users, err)
 		}
 		expectMock(t, mock)
 	})
@@ -294,8 +265,18 @@ func Test_UserRepo(t *testing.T) {
 		query string
 		arg   string
 	}{
-		{name: "GetByUUID", call: func(repo *UserRepo) (*domain.User, error) { return repo.GetByUUID(context.Background(), "uuid-1", nil) }, query: `WHERE "uuid"=\$1;`, arg: "uuid-1"},
-		{name: "GetByLogin", call: func(repo *UserRepo) (*domain.User, error) { return repo.GetByLogin(context.Background(), "login", nil) }, query: `WHERE "login"=\$1;`, arg: "login"},
+		{
+			name:  "GetByUUID",
+			call:  func(repo *UserRepo) (*domain.User, error) { return repo.GetByUUID(context.Background(), "uuid-1", nil) },
+			query: `WHERE "uuid"=\$1;`,
+			arg:   "uuid-1",
+		},
+		{
+			name:  "GetByLogin",
+			call:  func(repo *UserRepo) (*domain.User, error) { return repo.GetByLogin(context.Background(), "login", nil) },
+			query: `WHERE "login"=\$1;`,
+			arg:   "login",
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mock, baseRepo := newMockRepository(t)
@@ -315,8 +296,9 @@ func Test_UserRepo(t *testing.T) {
 			wantErr := errors.New("query error")
 			mock.ExpectQuery(tc.query).WithArgs(tc.arg).WillReturnError(wantErr)
 
-			if _, err := tc.call(repo); !errors.Is(err, wantErr) {
-				t.Fatalf("expected query error, got=%v", err)
+			user, err := tc.call(repo)
+			if !errors.Is(err, wantErr) || user != nil {
+				t.Fatalf("unexpected query error result: user=%v err=%v", user, err)
 			}
 			expectMock(t, mock)
 		})
@@ -324,10 +306,12 @@ func Test_UserRepo(t *testing.T) {
 		t.Run(tc.name+"CollectError", func(t *testing.T) {
 			mock, baseRepo := newMockRepository(t)
 			repo := NewUserRepo(baseRepo)
-			mock.ExpectQuery(tc.query).WithArgs(tc.arg).WillReturnRows(pgxmock.NewRows([]string{"uuid"}).AddRow("uuid-1"))
+			mock.ExpectQuery(tc.query).WithArgs(tc.arg).
+				WillReturnRows(pgxmock.NewRows([]string{"uuid"}).AddRow("uuid-1"))
 
-			if _, err := tc.call(repo); err == nil {
-				t.Fatal("expected collect error")
+			user, err := tc.call(repo)
+			if err == nil || user != nil {
+				t.Fatalf("expected collect error, got user=%v err=%v", user, err)
 			}
 			expectMock(t, mock)
 		})
@@ -465,7 +449,6 @@ func Test_UserRepo(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mock, baseRepo := newMockRepository(t)
 			repo := NewUserRepo(baseRepo)
-
 			exp := mock.ExpectExec(tc.query).WithArgs(tc.args...)
 			if tc.err != nil {
 				exp.WillReturnError(tc.err)
@@ -474,13 +457,7 @@ func Test_UserRepo(t *testing.T) {
 			}
 
 			err := tc.call(repo)
-			if tc.wantErr == nil {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			} else if !errors.Is(err, tc.wantErr) && err.Error() != tc.wantErr.Error() {
-				t.Fatalf("expected error %v, got=%v", tc.wantErr, err)
-			}
+			assertExpectedError(t, err, tc.wantErr)
 			expectMock(t, mock)
 		})
 	}
@@ -507,8 +484,9 @@ func Test_RefreshTokenRepo(t *testing.T) {
 		wantErr := errors.New("query error")
 		mock.ExpectQuery(`FROM "refresh_tokens" WHERE "jti"`).WithArgs("jti-1").WillReturnError(wantErr)
 
-		if _, err := repo.Get(context.Background(), "jti-1", nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		token, err := repo.Get(context.Background(), "jti-1", nil)
+		if !errors.Is(err, wantErr) || token != nil {
+			t.Fatalf("unexpected get query error result: token=%v err=%v", token, err)
 		}
 		expectMock(t, mock)
 	})
@@ -516,10 +494,13 @@ func Test_RefreshTokenRepo(t *testing.T) {
 	t.Run("GetCollectError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewRefreshTokenRepo(baseRepo)
-		mock.ExpectQuery(`FROM "refresh_tokens" WHERE "jti"`).WithArgs("jti-1").WillReturnRows(pgxmock.NewRows([]string{"jti"}).AddRow("jti-1"))
+		mock.ExpectQuery(`FROM "refresh_tokens" WHERE "jti"`).
+			WithArgs("jti-1").
+			WillReturnRows(pgxmock.NewRows([]string{"jti"}).AddRow("jti-1"))
 
-		if _, err := repo.Get(context.Background(), "jti-1", nil); err == nil {
-			t.Fatal("expected collect error")
+		token, err := repo.Get(context.Background(), "jti-1", nil)
+		if err == nil || token != nil {
+			t.Fatalf("expected collect error, got token=%v err=%v", token, err)
 		}
 		expectMock(t, mock)
 	})
@@ -549,14 +530,9 @@ func Test_RefreshTokenRepo(t *testing.T) {
 			} else {
 				exp.WillReturnResult(tc.result)
 			}
+
 			err := tc.call(repo)
-			if tc.wantErr == nil {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			} else if !errors.Is(err, tc.wantErr) && err.Error() != tc.wantErr.Error() {
-				t.Fatalf("expected error %v, got=%v", tc.wantErr, err)
-			}
+			assertExpectedError(t, err, tc.wantErr)
 			expectMock(t, mock)
 		})
 	}
@@ -568,14 +544,22 @@ func Test_ScheduleRepo(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewScheduleRepo(baseRepo)
-		item := &domain.CreateSchedule{DepartmentID: 1, Name: "Mon", WorkFrom: now, WorkTo: now.Add(time.Hour), BreakFrom: now.Add(2 * time.Hour), BreakTo: now.Add(3 * time.Hour)}
-
+		item := &domain.CreateSchedule{
+			DepartmentID: 1,
+			Name:         "Mon",
+			WorkFrom:     now,
+			WorkTo:       now.Add(time.Hour),
+			BreakFrom:    now.Add(2 * time.Hour),
+			BreakTo:      now.Add(3 * time.Hour),
+			IsWeekEnd:    true,
+		}
 		mock.ExpectExec(`INSERT INTO`).
 			WithArgs(item.DepartmentID, item.Name, item.WorkFrom, item.WorkTo, item.BreakFrom, item.BreakTo, item.IsWeekEnd).
 			WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-		if err := repo.Create(context.Background(), item, nil); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+		err := repo.Create(context.Background(), item, nil)
+		if err != nil {
+			t.Fatalf("Create returned error: %v", err)
 		}
 		expectMock(t, mock)
 	})
@@ -583,14 +567,21 @@ func Test_ScheduleRepo(t *testing.T) {
 	t.Run("CreateError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewScheduleRepo(baseRepo)
-		item := &domain.CreateSchedule{DepartmentID: 1, Name: "Mon", WorkFrom: now, WorkTo: now.Add(time.Hour), BreakFrom: now.Add(2 * time.Hour), BreakTo: now.Add(3 * time.Hour)}
+		item := &domain.CreateSchedule{
+			DepartmentID: 1,
+			Name:         "Mon",
+			WorkFrom:     now,
+			WorkTo:       now.Add(time.Hour),
+			BreakFrom:    now.Add(2 * time.Hour),
+			BreakTo:      now.Add(3 * time.Hour),
+		}
 		wantErr := errors.New("exec error")
-
 		mock.ExpectExec(`INSERT INTO`).
 			WithArgs(item.DepartmentID, item.Name, item.WorkFrom, item.WorkTo, item.BreakFrom, item.BreakTo, item.IsWeekEnd).
 			WillReturnError(wantErr)
 
-		if err := repo.Create(context.Background(), item, nil); !errors.Is(err, wantErr) {
+		err := repo.Create(context.Background(), item, nil)
+		if !errors.Is(err, wantErr) {
 			t.Fatalf("expected exec error, got=%v", err)
 		}
 		expectMock(t, mock)
@@ -616,7 +607,6 @@ func Test_ScheduleRepo(t *testing.T) {
 			t.Run(tt.name, func(t *testing.T) {
 				mock, baseRepo := newMockRepository(t)
 				repo := NewScheduleRepo(baseRepo)
-
 				if tt.query != "" {
 					exp := mock.ExpectExec(tt.query).WithArgs(tt.args...)
 					if tt.err != nil {
@@ -627,13 +617,7 @@ func Test_ScheduleRepo(t *testing.T) {
 				}
 
 				err := repo.Update(context.Background(), tt.item, nil)
-				if tt.wantErr == nil {
-					if err != nil {
-						t.Fatalf("unexpected error: %v", err)
-					}
-				} else if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
-					t.Fatalf("expected error %v, got=%v", tt.wantErr, err)
-				}
+				assertExpectedError(t, err, tt.wantErr)
 				expectMock(t, mock)
 			})
 		}
@@ -641,42 +625,36 @@ func Test_ScheduleRepo(t *testing.T) {
 
 	for _, tc := range []struct {
 		name    string
-		call    func(repo *ScheduleRepo) error
-		query   string
-		arg     any
 		result  pgconn.CommandTag
 		err     error
 		wantErr error
 	}{
-		{name: "DeleteSuccess", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, result: pgxmock.NewResult("DELETE", 1)},
-		{name: "DeleteExecError", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, err: errors.New("exec error"), wantErr: errors.New("exec error")},
-		{name: "DeleteRowsAffected", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, result: pgxmock.NewResult("DELETE", 0), wantErr: domain.ErrZeroRowAffected},
+		{name: "DeleteSuccess", result: pgxmock.NewResult("DELETE", 1)},
+		{name: "DeleteExecError", err: errors.New("exec error"), wantErr: errors.New("exec error")},
+		{name: "DeleteRowsAffected", result: pgxmock.NewResult("DELETE", 0), wantErr: domain.ErrZeroRowAffected},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mock, baseRepo := newMockRepository(t)
 			repo := NewScheduleRepo(baseRepo)
-			exp := mock.ExpectExec(tc.query).WithArgs(tc.arg)
+			exp := mock.ExpectExec(`DELETE FROM "schedules" WHERE id=\$1;`).WithArgs(1)
 			if tc.err != nil {
 				exp.WillReturnError(tc.err)
 			} else {
 				exp.WillReturnResult(tc.result)
 			}
-			err := tc.call(repo)
-			if tc.wantErr == nil {
-				if err != nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
-			} else if !errors.Is(err, tc.wantErr) && err.Error() != tc.wantErr.Error() {
-				t.Fatalf("expected error %v, got=%v", tc.wantErr, err)
-			}
+
+			err := repo.Delete(context.Background(), 1, nil)
+			assertExpectedError(t, err, tc.wantErr)
 			expectMock(t, mock)
 		})
 	}
 
-	t.Run("ExistByDepartmentID", func(t *testing.T) {
+	t.Run("ExistByDepartmentIDTrue", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewScheduleRepo(baseRepo)
-		mock.ExpectQuery(`SELECT count\("id"\) FROM "schedules"`).WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+		mock.ExpectQuery(`SELECT count\("id"\) FROM "schedules"`).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 
 		ok, err := repo.ExistByDepartmentID(context.Background(), 1)
 		if err != nil || !ok {
@@ -685,14 +663,29 @@ func Test_ScheduleRepo(t *testing.T) {
 		expectMock(t, mock)
 	})
 
-	t.Run("ExistByDepartmentIDQueryError", func(t *testing.T) {
+	t.Run("ExistByDepartmentIDFalse", func(t *testing.T) {
+		mock, baseRepo := newMockRepository(t)
+		repo := NewScheduleRepo(baseRepo)
+		mock.ExpectQuery(`SELECT count\("id"\) FROM "schedules"`).
+			WithArgs(1).
+			WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
+
+		ok, err := repo.ExistByDepartmentID(context.Background(), 1)
+		if err != nil || ok {
+			t.Fatalf("unexpected exist result: ok=%v err=%v", ok, err)
+		}
+		expectMock(t, mock)
+	})
+
+	t.Run("ExistByDepartmentIDError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewScheduleRepo(baseRepo)
 		wantErr := errors.New("query error")
 		mock.ExpectQuery(`SELECT count\("id"\) FROM "schedules"`).WithArgs(1).WillReturnError(wantErr)
 
-		if _, err := repo.ExistByDepartmentID(context.Background(), 1); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		ok, err := repo.ExistByDepartmentID(context.Background(), 1)
+		if !errors.Is(err, wantErr) || ok {
+			t.Fatalf("unexpected exist error result: ok=%v err=%v", ok, err)
 		}
 		expectMock(t, mock)
 	})
@@ -722,8 +715,9 @@ func Test_ScheduleRepo(t *testing.T) {
 		wantErr := errors.New("query error")
 		mock.ExpectQuery(`FROM "schedules"`).WithArgs(1, from, to).WillReturnError(wantErr)
 
-		if _, err := repo.GetFromTo(context.Background(), 1, from, to, nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		items, err := repo.GetFromTo(context.Background(), 1, from, to, nil)
+		if !errors.Is(err, wantErr) || items != nil {
+			t.Fatalf("unexpected get from to query error result: items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
 	})
@@ -733,51 +727,13 @@ func Test_ScheduleRepo(t *testing.T) {
 		repo := NewScheduleRepo(baseRepo)
 		from := now
 		to := now.Add(time.Hour)
-		mock.ExpectQuery(`FROM "schedules"`).WithArgs(1, from, to).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+		mock.ExpectQuery(`FROM "schedules"`).
+			WithArgs(1, from, to).
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-		if _, err := repo.GetFromTo(context.Background(), 1, from, to, nil); err == nil {
-			t.Fatal("expected collect error")
-		}
-		expectMock(t, mock)
-	})
-}
-
-func Test_TicketRepo(t *testing.T) {
-	t.Run("GetByID", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewTicketRepo(baseRepo)
-		now := time.Now()
-		mock.ExpectQuery(`FROM "tickets"`).WithArgs(1).WillReturnRows(
-			pgxmock.NewRows([]string{"id", "department_id", "name", "manager_user_uuid", "client_user_uuid", "status", "create_at", "update_at"}).
-				AddRow(1, 2, "Ticket", "manager", "client", domain.NewTicketStatus, now, now),
-		)
-
-		item, err := repo.GetByID(context.Background(), 1)
-		if err != nil || item.ID != 1 {
-			t.Fatalf("unexpected ticket result: item=%v err=%v", item, err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("GetByIDQueryError", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewTicketRepo(baseRepo)
-		wantErr := errors.New("query error")
-		mock.ExpectQuery(`FROM "tickets"`).WithArgs(1).WillReturnError(wantErr)
-
-		if _, err := repo.GetByID(context.Background(), 1); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("GetByIDCollectError", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewTicketRepo(baseRepo)
-		mock.ExpectQuery(`FROM "tickets"`).WithArgs(1).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
-
-		if _, err := repo.GetByID(context.Background(), 1); err == nil {
-			t.Fatal("expected collect error")
+		items, err := repo.GetFromTo(context.Background(), 1, from, to, nil)
+		if err == nil || items != nil {
+			t.Fatalf("expected collect error, got items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
 	})
@@ -785,54 +741,51 @@ func Test_TicketRepo(t *testing.T) {
 
 func Test_MsgRepo(t *testing.T) {
 	now := time.Now()
-	msg := domain.CreateMsg{TicketID: 1, EncryptedText: []byte("enc")}
+	msgRows := func() *pgxmock.Rows {
+		return pgxmock.NewRows([]string{"id", "user_uuid", "text", "ticket_id", "status", "create_at"}).
+			AddRow(1, "uuid-1", []byte("enc"), 2, domain.MsgStatusSent, now)
+	}
 
-	t.Run("CreateForClient", func(t *testing.T) {
+	t.Run("Create", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewMsgRepo(baseRepo)
+		msg := domain.CreateMsg{TicketID: 2, Text: "plain", EncryptedText: []byte("enc")}
 		mock.ExpectQuery(`INSERT INTO "messages"`).
-			WithArgs(1, domain.MsgFromTypeManager, []byte("enc"), domain.MsgStatusSent).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}).
-				AddRow(1, domain.MsgFromTypeManager, []byte("enc"), 1, domain.MsgStatusSent, now))
+			WithArgs("uuid-1", []byte("enc"), 2, domain.MsgStatusSent).
+			WillReturnRows(msgRows())
 
-		item, err := repo.CreateForClient(context.Background(), msg, nil)
-		if err != nil || item.ID != 1 {
-			t.Fatalf("unexpected create for client result: item=%v err=%v", item, err)
+		item, err := repo.Create(context.Background(), msg, "uuid-1", nil)
+		if err != nil || item.ID != 1 || !sameBytes(item.EncryptedText, []byte("enc")) {
+			t.Fatalf("unexpected create result: item=%+v err=%v", item, err)
 		}
 		expectMock(t, mock)
 	})
 
-	t.Run("CreateForManager", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`INSERT INTO "messages"`).
-			WithArgs(1, domain.MsgFromTypeClient, []byte("enc"), domain.MsgStatusSent).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}).
-				AddRow(1, domain.MsgFromTypeClient, []byte("enc"), 1, domain.MsgStatusSent, now))
-
-		item, err := repo.CreateForManager(context.Background(), msg, nil)
-		if err != nil || item.ID != 1 {
-			t.Fatalf("unexpected create for manager result: item=%v err=%v", item, err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("CreateHelperErrors", func(t *testing.T) {
+	t.Run("CreateQueryError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewMsgRepo(baseRepo)
 		wantErr := errors.New("query error")
+		mock.ExpectQuery(`INSERT INTO "messages"`).
+			WithArgs("uuid-1", []byte("enc"), 2, domain.MsgStatusSent).
+			WillReturnError(wantErr)
 
-		mock.ExpectQuery(`insert`).WithArgs(1, domain.MsgFromTypeSystem, []byte("enc"), domain.MsgStatusSent).WillReturnError(wantErr)
-		if _, err := repo.create(context.Background(), `insert`, domain.CreateMsg{TicketID: 1, EncryptedText: []byte("enc")}, domain.MsgFromTypeSystem, nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		item, err := repo.Create(context.Background(), domain.CreateMsg{TicketID: 2, EncryptedText: []byte("enc")}, "uuid-1", nil)
+		if !errors.Is(err, wantErr) || item != nil {
+			t.Fatalf("unexpected create query error result: item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
+	})
 
-		mock, baseRepo = newMockRepository(t)
-		repo = NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`insert`).WithArgs(1, domain.MsgFromTypeSystem, []byte("enc"), domain.MsgStatusSent).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
-		if _, err := repo.create(context.Background(), `insert`, domain.CreateMsg{TicketID: 1, EncryptedText: []byte("enc")}, domain.MsgFromTypeSystem, nil); err == nil {
-			t.Fatal("expected collect error")
+	t.Run("CreateCollectError", func(t *testing.T) {
+		mock, baseRepo := newMockRepository(t)
+		repo := NewMsgRepo(baseRepo)
+		mock.ExpectQuery(`INSERT INTO "messages"`).
+			WithArgs("uuid-1", []byte("enc"), 2, domain.MsgStatusSent).
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+
+		item, err := repo.Create(context.Background(), domain.CreateMsg{TicketID: 2, EncryptedText: []byte("enc")}, "uuid-1", nil)
+		if err == nil || item != nil {
+			t.Fatalf("expected collect error, got item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
 	})
@@ -840,12 +793,13 @@ func Test_MsgRepo(t *testing.T) {
 	t.Run("CreateFile", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`INSERT INTO "message_files"`).WithArgs(1, "file.txt", "/tmp/file").WillReturnRows(
-			pgxmock.NewRows([]string{"id", "msg_id", "file_name", "path"}).AddRow(1, 1, "file.txt", "/tmp/file"),
-		)
+		mock.ExpectQuery(`INSERT INTO "message_files"`).
+			WithArgs(1, "file.txt", "/tmp/file").
+			WillReturnRows(pgxmock.NewRows([]string{"id", "msg_id", "file_name", "path"}).
+				AddRow(7, 1, "file.txt", "/tmp/file"))
 
 		item, err := repo.CreateFile(context.Background(), 1, "file.txt", "/tmp/file", nil)
-		if err != nil || item.ID != 1 {
+		if err != nil || item.ID != 7 {
 			t.Fatalf("unexpected create file result: item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
@@ -857,8 +811,9 @@ func Test_MsgRepo(t *testing.T) {
 		wantErr := errors.New("query error")
 		mock.ExpectQuery(`INSERT INTO "message_files"`).WithArgs(1, "file.txt", "/tmp/file").WillReturnError(wantErr)
 
-		if _, err := repo.CreateFile(context.Background(), 1, "file.txt", "/tmp/file", nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
+		item, err := repo.CreateFile(context.Background(), 1, "file.txt", "/tmp/file", nil)
+		if !errors.Is(err, wantErr) || item != nil {
+			t.Fatalf("unexpected create file query error result: item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
 	})
@@ -866,10 +821,13 @@ func Test_MsgRepo(t *testing.T) {
 	t.Run("CreateFileCollectError", func(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`INSERT INTO "message_files"`).WithArgs(1, "file.txt", "/tmp/file").WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
+		mock.ExpectQuery(`INSERT INTO "message_files"`).
+			WithArgs(1, "file.txt", "/tmp/file").
+			WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
 
-		if _, err := repo.CreateFile(context.Background(), 1, "file.txt", "/tmp/file", nil); err == nil {
-			t.Fatal("expected collect error")
+		item, err := repo.CreateFile(context.Background(), 1, "file.txt", "/tmp/file", nil)
+		if err == nil || item != nil {
+			t.Fatalf("expected collect error, got item=%v err=%v", item, err)
 		}
 		expectMock(t, mock)
 	})
@@ -879,15 +837,10 @@ func Test_MsgRepo(t *testing.T) {
 		repo := NewMsgRepo(baseRepo)
 		mock.ExpectQuery(`FROM "messages"`).
 			WithArgs("uuid-1", domain.MsgStatusSent).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}).
-				AddRow(1, domain.MsgFromTypeManager, []byte("enc"), 1, domain.MsgStatusSent, now))
-		mock.ExpectQuery(`FROM "message_files"`).
-			WithArgs([]int{1}).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "msg_id", "file_name", "path"}).
-				AddRow(1, 1, "a.txt", "/a.txt"))
+			WillReturnRows(msgRows())
 
 		items, err := repo.GetUnread(context.Background(), "uuid-1", nil)
-		if err != nil || len(items) != 1 || len(items[0].Files) != 1 {
+		if err != nil || len(items) != 1 || items[0].ID != 1 {
 			t.Fatalf("unexpected unread result: items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
@@ -899,64 +852,9 @@ func Test_MsgRepo(t *testing.T) {
 		wantErr := errors.New("query error")
 		mock.ExpectQuery(`FROM "messages"`).WithArgs("uuid-1", domain.MsgStatusSent).WillReturnError(wantErr)
 
-		if _, err := repo.GetUnread(context.Background(), "uuid-1", nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected query error, got=%v", err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("GetUnreadCollectError", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`FROM "messages"`).WithArgs("uuid-1", domain.MsgStatusSent).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
-
-		if _, err := repo.GetUnread(context.Background(), "uuid-1", nil); err == nil {
-			t.Fatal("expected collect error")
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("GetUnreadEmpty", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`FROM "messages"`).WithArgs("uuid-1", domain.MsgStatusSent).WillReturnRows(
-			pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}),
-		)
-
 		items, err := repo.GetUnread(context.Background(), "uuid-1", nil)
-		if err != nil || len(items) != 0 {
-			t.Fatalf("unexpected unread result: items=%v err=%v", items, err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("GetUnreadFilesQueryError", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewMsgRepo(baseRepo)
-		wantErr := errors.New("files query error")
-		mock.ExpectQuery(`FROM "messages"`).
-			WithArgs("uuid-1", domain.MsgStatusSent).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}).
-				AddRow(1, domain.MsgFromTypeManager, []byte("enc"), 1, domain.MsgStatusSent, now))
-		mock.ExpectQuery(`FROM "message_files"`).WithArgs([]int{1}).WillReturnError(wantErr)
-
-		if _, err := repo.GetUnread(context.Background(), "uuid-1", nil); !errors.Is(err, wantErr) {
-			t.Fatalf("expected files query error, got=%v", err)
-		}
-		expectMock(t, mock)
-	})
-
-	t.Run("GetUnreadFilesCollectError", func(t *testing.T) {
-		mock, baseRepo := newMockRepository(t)
-		repo := NewMsgRepo(baseRepo)
-		mock.ExpectQuery(`FROM "messages"`).
-			WithArgs("uuid-1", domain.MsgStatusSent).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}).
-				AddRow(1, domain.MsgFromTypeManager, []byte("enc"), 1, domain.MsgStatusSent, now))
-		mock.ExpectQuery(`FROM "message_files"`).WithArgs([]int{1}).WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow(1))
-
-		if _, err := repo.GetUnread(context.Background(), "uuid-1", nil); err == nil {
-			t.Fatal("expected files collect error")
+		if !errors.Is(err, wantErr) || items != nil {
+			t.Fatalf("unexpected unread query error result: items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
 	})
@@ -970,14 +868,15 @@ func Test_MsgRepo(t *testing.T) {
 		}{
 			{name: "success", result: pgxmock.NewResult("UPDATE", 1)},
 			{name: "exec error", err: errors.New("exec error"), wantErr: errors.New("exec error")},
-			{name: "unknown object", result: pgxmock.NewResult("UPDATE", 0), wantErr: domain.ErrUnknownObject},
+			{name: "zero rows", result: pgxmock.NewResult("UPDATE", 0), wantErr: domain.ErrZeroRowAffected},
 		}
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				mock, baseRepo := newMockRepository(t)
 				repo := NewMsgRepo(baseRepo)
-				exp := mock.ExpectExec(`UPDATE "messages"`).WithArgs("uuid-1", 1, domain.MsgStatusRead)
+				exp := mock.ExpectExec(`UPDATE "messages"`).
+					WithArgs(domain.MsgStatusRead, "uuid-1", 1, domain.MsgStatusSent)
 				if tt.err != nil {
 					exp.WillReturnError(tt.err)
 				} else {
@@ -985,13 +884,7 @@ func Test_MsgRepo(t *testing.T) {
 				}
 
 				err := repo.MarkReadByID(context.Background(), "uuid-1", 1, nil)
-				if tt.wantErr == nil {
-					if err != nil {
-						t.Fatalf("unexpected error: %v", err)
-					}
-				} else if !errors.Is(err, tt.wantErr) && err.Error() != tt.wantErr.Error() {
-					t.Fatalf("expected error %v, got=%v", tt.wantErr, err)
-				}
+				assertExpectedError(t, err, tt.wantErr)
 				expectMock(t, mock)
 			})
 		}
@@ -1002,34 +895,58 @@ func Test_MsgRepo(t *testing.T) {
 		repo := NewMsgRepo(baseRepo)
 		from := now.Add(-time.Hour)
 		to := now
-		mock.ExpectQuery(`JOIN "tickets" AS t`).WithArgs("uuid-1", 1, from, to).WillReturnRows(
-			pgxmock.NewRows([]string{"id", "from_type", "text", "ticket_id", "status", "create_at"}).
-				AddRow(1, domain.MsgFromTypeManager, []byte("enc"), 1, domain.MsgStatusSent, now),
-		)
-		mock.ExpectQuery(`FROM "message_files"`).WithArgs([]int{1}).WillReturnRows(
-			pgxmock.NewRows([]string{"id", "msg_id", "file_name", "path"}),
-		)
+		mock.ExpectQuery(`FROM "messages"`).
+			WithArgs("uuid-1", 2, from, to).
+			WillReturnRows(msgRows())
 
-		items, err := repo.GetHistory(context.Background(), "uuid-1", 1, from, to)
-		if err != nil || len(items) != 1 {
+		items, err := repo.GetHistory(context.Background(), "uuid-1", 2, from, to)
+		if err != nil || len(items) != 1 || items[0].TicketID != 2 {
 			t.Fatalf("unexpected history result: items=%v err=%v", items, err)
 		}
 		expectMock(t, mock)
 	})
 
-	t.Run("GetFilesByMsgIDsEmpty", func(t *testing.T) {
-		_, baseRepo := newMockRepository(t)
+	t.Run("GetHistoryQueryError", func(t *testing.T) {
+		mock, baseRepo := newMockRepository(t)
 		repo := NewMsgRepo(baseRepo)
-		items, err := repo.getFilesByMsgIDs(context.Background(), nil, nil)
-		if err != nil || len(items) != 0 {
-			t.Fatalf("unexpected files result: items=%v err=%v", items, err)
+		from := now.Add(-time.Hour)
+		to := now
+		wantErr := errors.New("query error")
+		mock.ExpectQuery(`FROM "messages"`).WithArgs("uuid-1", 2, from, to).WillReturnError(wantErr)
+
+		items, err := repo.GetHistory(context.Background(), "uuid-1", 2, from, to)
+		if !errors.Is(err, wantErr) || items != nil {
+			t.Fatalf("unexpected history query error result: items=%v err=%v", items, err)
 		}
+		expectMock(t, mock)
 	})
 
-	t.Run("MsgIDs", func(t *testing.T) {
-		got := msgIDs([]*domain.Msg{{ID: 1}, {ID: 2}})
-		if len(got) != 2 || got[0] != 1 || got[1] != 2 {
-			t.Fatalf("unexpected ids: %v", got)
+}
+
+func assertExpectedError(t *testing.T, err error, wantErr error) {
+	t.Helper()
+	if wantErr == nil {
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
-	})
+		return
+	}
+	if err == nil {
+		t.Fatalf("expected error %v, got nil", wantErr)
+	}
+	if !errors.Is(err, wantErr) && err.Error() != wantErr.Error() {
+		t.Fatalf("expected error %v, got=%v", wantErr, err)
+	}
+}
+
+func sameBytes(a []byte, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

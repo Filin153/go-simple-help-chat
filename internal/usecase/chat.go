@@ -133,8 +133,8 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, user domain.UserSystemInfo)
 		}
 	}
 
-	for _, msg := range res {
-		if err = c.decryptMsgText(&msg); err != nil {
+	for i := range res {
+		if err = c.decryptMsgText(&res[i]); err != nil {
 			return
 		}
 	}
@@ -150,7 +150,6 @@ func (c *ChatUseCase) MarkAsRead(ctx context.Context, user domain.UserSystemInfo
 	defer tx.Rollback(ctx)
 
 	for _, msgID := range msgIDs {
-		msgID := msgID
 		go c.msgCache.DeleteByMsgID(ctx, user.UUID, msgID)
 		if err := c.msgRepo.MarkReadByID(ctx, user.UUID, msgID, tx); err != nil {
 			return err
@@ -174,8 +173,8 @@ func (c *ChatUseCase) GetHistory(ctx context.Context, user domain.UserSystemInfo
 		return nil, err
 	}
 
-	for _, msg := range msges {
-		if err = c.decryptMsgText(&msg); err != nil {
+	for i := range msges {
+		if err = c.decryptMsgText(&msges[i]); err != nil {
 			return nil, err
 		}
 	}
@@ -198,7 +197,6 @@ func (c *ChatUseCase) fileToS3(ctx context.Context, files []domain.CreateFile, t
 	errGroup, gCtx := errgroup.WithContext(ctx)
 	errGroup.SetLimit(3)
 	for i, file := range files {
-		i, file := i, file
 		errGroup.Go(func() error {
 			path, err := c.s3.Save(gCtx, "ticket/file/"+strconv.Itoa(ticketID), file.Data)
 			if err != nil {
@@ -249,17 +247,16 @@ func (c *ChatUseCase) decryptMsgText(msg *domain.Msg) (err error) {
 }
 
 func (c *ChatUseCase) createAdd(ticketID int) []byte {
-	return []byte(fmt.Sprintf(
+	return fmt.Appendf(nil,
 		"%d",
 		ticketID,
-	))
+	)
 }
 
 func (c *ChatUseCase) deleteFormS3(ctx context.Context, pathes []string) error {
 	errG, ctxG := errgroup.WithContext(ctx)
 	errG.SetLimit(3)
 	for _, path := range pathes {
-		path := path
 		errG.Go(func() error {
 			return c.s3.Delete(ctxG, path)
 		})

@@ -8,7 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-
 type DepartmentRepo interface {
 	Create(ctx context.Context, createDepartment domain.CreateDepartment, tx pgx.Tx) (int, error)
 	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
