@@ -39,7 +39,7 @@ type MsgFileContent struct {
 
 type Msg struct {
 	ID            int              `db:"id" json:"id"`
-	FromType      MsgFromType      `db:"from_type" json:"from_type"`
+	UserUUID      string           `db:"user_uuid" json:"user_uuid"`
 	Text          string           `json:"text"`
 	EncryptedText []byte           `db:"text" json:"-"`
 	TicketID      int              `db:"ticket_id" json:"ticket_id"`

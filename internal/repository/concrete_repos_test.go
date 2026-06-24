@@ -608,7 +608,7 @@ func Test_ScheduleRepo(t *testing.T) {
 		}{
 			{name: "empty object", item: &domain.UpdateSchedule{ID: 1}, wantErr: domain.ErrEmptyObject},
 			{name: "exec error", item: &domain.UpdateSchedule{ID: 1, Name: "Mon"}, query: regexp.QuoteMeta(`UPDATE "schedules" SET "name" = $1 WHERE "id" = $2;`), args: []any{"Mon", 1}, err: errors.New("exec error"), wantErr: errors.New("exec error")},
-			{name: "rows affected", item: &domain.UpdateSchedule{ID: 1, Name: "Mon"}, query: regexp.QuoteMeta(`UPDATE "schedules" SET "name" = $1 WHERE "id" = $2;`), args: []any{"Mon", 1}, result: pgxmock.NewResult("UPDATE", 0), wantErr: domain.ErrRowsAffected},
+			{name: "rows affected", item: &domain.UpdateSchedule{ID: 1, Name: "Mon"}, query: regexp.QuoteMeta(`UPDATE "schedules" SET "name" = $1 WHERE "id" = $2;`), args: []any{"Mon", 1}, result: pgxmock.NewResult("UPDATE", 0), wantErr: domain.ErrZeroRowAffected},
 			{name: "success", item: &domain.UpdateSchedule{ID: 1, Name: "Mon"}, query: regexp.QuoteMeta(`UPDATE "schedules" SET "name" = $1 WHERE "id" = $2;`), args: []any{"Mon", 1}, result: pgxmock.NewResult("UPDATE", 1)},
 		}
 
@@ -650,7 +650,7 @@ func Test_ScheduleRepo(t *testing.T) {
 	}{
 		{name: "DeleteSuccess", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, result: pgxmock.NewResult("DELETE", 1)},
 		{name: "DeleteExecError", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, err: errors.New("exec error"), wantErr: errors.New("exec error")},
-		{name: "DeleteRowsAffected", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, result: pgxmock.NewResult("DELETE", 0), wantErr: domain.ErrRowsAffected},
+		{name: "DeleteRowsAffected", call: func(repo *ScheduleRepo) error { return repo.Delete(context.Background(), 1, nil) }, query: `DELETE FROM "schedules" WHERE id=\$1;`, arg: 1, result: pgxmock.NewResult("DELETE", 0), wantErr: domain.ErrZeroRowAffected},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mock, baseRepo := newMockRepository(t)

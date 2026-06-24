@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"shc/domain"
 
 	"github.com/jackc/pgx/v5"
@@ -28,23 +29,7 @@ func (d *DepartmentRepo) Create(ctx context.Context, createDepartment domain.Cre
 }
 
 func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
-	const query = `SELECT
-	d."id",
-	d."name",
-	s."work_from",
-	s."work_to",
-	s."is_week_end"
-FROM "departments" AS d
-JOIN LATERAL (
-	SELECT "work_from", "work_to", "is_week_end"
-	FROM "schedules"
-	WHERE "department_id" = d."id"
-	  AND "work_from"::DATE = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')::DATE
-	ORDER BY "work_from" ASC
-	LIMIT 1
-) AS s ON TRUE
-ORDER BY d."id" ASC
-LIMIT $1 OFFSET $2;`
+	const query = `SELECT * FROM departments LIMIT $1 OFFSET $2;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
 	if err != nil {
 		return []domain.DepartmentWithOnScheduleeDay{}, err
@@ -59,7 +44,7 @@ LIMIT $1 OFFSET $2;`
 }
 
 func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error) {
-	const query = `SELECT "id", "name" FROM "departments" WHERE "id"=$1;`
+	const query = `SELECT * FROM "departments" WHERE "id"=$1;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, id)
 	if err != nil {
 		return domain.Department{}, err
@@ -75,14 +60,5 @@ func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (domain
 }
 
 func (d *DepartmentRepo) Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error {
-	const query = `UPDATE "departments" SET "name"=$2 WHERE "id"=$1;`
-	tag, err := d.repo.GetDB(tx).Exec(ctx, query, id, updateDepartment.Name)
-	if err != nil {
-		return err
-	}
-	if tag.RowsAffected() == 0 {
-		return domain.ErrUnknownObject
-	}
-
-	return nil
+	return fmt.Errorf("NEED TO DO")
 }

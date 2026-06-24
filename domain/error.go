@@ -12,5 +12,5 @@ var (
 	ErrFilesLoad            error = errors.New("Максимальное количество файлов для загрузки 10, максимальный обем одного файла 15МБ")
 	ErrUnknownObject        error = errors.New("Неизвестный объект")
 	ErrEmptyObject          error = errors.New("Пустой объект")
-	ErrRowsAffected          error = errors.New("Неудалось найти оекты и выполнить действие")
+	ErrZeroRowAffected      error = errors.New("Неудалось найти оекты и выполнить действие")
 )

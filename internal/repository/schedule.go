@@ -47,7 +47,7 @@ func (s *ScheduleRepo) Update(ctx context.Context, updateSchedule *domain.Update
 	}
 
 	if tag.RowsAffected() == 0 {
-		return domain.ErrRowsAffected
+		return domain.ErrZeroRowAffected
 	}
 
 	return nil
@@ -61,7 +61,7 @@ func (s *ScheduleRepo) Delete(ctx context.Context, id int, tx pgx.Tx) error {
 	}
 
 	if tag.RowsAffected() == 0 {
-		return domain.ErrRowsAffected
+		return domain.ErrZeroRowAffected
 	}
 
 	return nil

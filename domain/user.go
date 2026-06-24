@@ -42,3 +42,9 @@ type CreateClient struct {
 	UserUUID string      `db:"user_uuid" json:"user_uuid"`
 	Info     map[any]any `db:"info" json:"info"`
 }
+
+type UserSystemInfo struct {
+	UUID     string
+	UserRole UserRole
+	Scope    []string
+}

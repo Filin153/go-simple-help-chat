@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"shc/config"
-	"shc/domain"
 	"shc/internal/delivery/http"
 	"shc/internal/infrastructure/cache"
 	"shc/internal/repository"
@@ -43,7 +42,6 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	departmentRepo := repository.NewDepartmentRepo(baseRepo)
 	scheduleRepo := repository.NewScheduleRepo(baseRepo)
 	msgRepo := repository.NewMsgRepo(baseRepo)
-	ticketRepo := repository.NewTicketRepo(baseRepo)
 	s3 := stubS3{}
 	otherSystemLogin := stubOtherSystemLogin{}
 
@@ -61,7 +59,7 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	)
 	userUseCase := usecase.NewUserUseCase(userRepo, passwordService)
 	departmentUseCase := usecase.NewDepartmentUseCase(baseRepo, departmentRepo, scheduleUseCase, scheduleRepo)
-	chatUseCase := usecase.NewChatUseCase(msgCache, s3, msgRepo, ticketRepo, baseRepo, encryptionService, cfg.Chat.ReadTimeout, cfg.Chat.PollInterval)
+	chatUseCase := usecase.NewChatUseCase(msgCache, s3, msgRepo, baseRepo, encryptionService, cfg.Chat.ReadTimeout, cfg.Chat.PollInterval)
 	api := http.NewAPI(authHTTPAdapter{auth: authUseCase}, cfg.HTTP)
 
 	return &App{
@@ -77,4 +75,3 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 		API:               api,
 	}, nil
 }
-

@@ -13,9 +13,10 @@ import (
 )
 
 type MsgCacheInterface interface {
-	Set(ctx context.Context, userUUID string, val *domain.Msg) error
-	Get(ctx context.Context, userUUID string) ([]*domain.Msg, bool, error)
-	DeleteByMsgID(ctx context.Context, userUUID string, id int) error
+	SetMsg(ctx context.Context, msg *domain.Msg) error
+	GetMsgByUserUUID(ctx context.Context, userUUID string) ([]domain.Msg, bool, error)
+	GetMsgByTiketID(ctx context.Context, ticketID int) ([]domain.Msg, bool, error)
+	DeleteByMsgID(ctx context.Context, userUUID string, msgID int) error
 }
 
 type S3Interface interface {
@@ -24,16 +25,11 @@ type S3Interface interface {
 }
 
 type MsgRepo interface {
-	CreateForClient(ctx context.Context, msg domain.CreateMsg, tx pgx.Tx) (savedMsg *domain.Msg, err error)
-	CreateForManager(ctx context.Context, msg domain.CreateMsg, tx pgx.Tx) (savedMsg *domain.Msg, err error)
-	CreateFile(ctx context.Context, msgID int, fileName, path string, tx pgx.Tx) (file domain.MsgFileContent, err error)
-	GetUnread(ctx context.Context, userUUID string, tx pgx.Tx) (msg []*domain.Msg, err error)
+	Create(ctx context.Context, msg domain.CreateMsg, userUUID string, tx pgx.Tx) (*domain.Msg, error)
+	CreateFile(ctx context.Context, msgID int, fileName, path string, tx pgx.Tx) (*domain.MsgFileContent, error)
+	GetUnread(ctx context.Context, userUUID string, tx pgx.Tx) ([]domain.Msg, error)
 	MarkReadByID(ctx context.Context, userUUID string, id int, tx pgx.Tx) error
-	GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error)
-}
-
-type TicketRepo interface {
-	GetByID(ctx context.Context, id int) (domain.Ticket, error)
+	GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]domain.Msg, error)
 }
 
 type EncryptionInterface interface {
@@ -45,19 +41,17 @@ type ChatUseCase struct {
 	msgCache            MsgCacheInterface
 	s3                  S3Interface
 	msgRepo             MsgRepo
-	ticketRepo          TicketRepo
 	mainRepo            MainRepo
 	encryption          EncryptionInterface
 	longPullReadTimeOut time.Duration
 	pollInterval        time.Duration
 }
 
-func NewChatUseCase(msgCache MsgCacheInterface, s3 S3Interface, msgRepo MsgRepo, ticketRepo TicketRepo, mainRepo MainRepo, encryption EncryptionInterface, longPullReadTimeOut, pollInterval time.Duration) *ChatUseCase {
+func NewChatUseCase(msgCache MsgCacheInterface, s3 S3Interface, msgRepo MsgRepo, mainRepo MainRepo, encryption EncryptionInterface, longPullReadTimeOut, pollInterval time.Duration) *ChatUseCase {
 	return &ChatUseCase{
 		msgCache:            msgCache,
 		s3:                  s3,
 		msgRepo:             msgRepo,
-		ticketRepo:          ticketRepo,
 		mainRepo:            mainRepo,
 		encryption:          encryption,
 		longPullReadTimeOut: longPullReadTimeOut,
@@ -65,12 +59,7 @@ func NewChatUseCase(msgCache MsgCacheInterface, s3 S3Interface, msgRepo MsgRepo,
 	}
 }
 
-func (c *ChatUseCase) Send(ctx context.Context, msg domain.CreateMsg, fromType domain.MsgFromType) (err error) {
-	ticket, err := c.ticketRepo.GetByID(ctx, msg.TicketID)
-	if err != nil {
-		return err
-	}
-
+func (c *ChatUseCase) Send(ctx context.Context, user domain.UserSystemInfo, msg domain.CreateMsg) (err error) {
 	if err := c.encryptMsgText(&msg); err != nil {
 		return err
 	}
@@ -97,45 +86,26 @@ func (c *ChatUseCase) Send(ctx context.Context, msg domain.CreateMsg, fromType d
 			return err
 		}
 	}
-	switch fromType {
-	case domain.MsgFromTypeManager:
-		savedMsg, err := c.createForClientDB(ctx, msg, &ticket, files, tx)
-		if err != nil {
-			return err
-		}
-		go c.createForClientCache(ctx, savedMsg, &ticket)
-	case domain.MsgFromTypeClient:
-		savedMsg, err := c.createForManagerDB(ctx, msg, &ticket, files, tx)
-		if err != nil {
-			return err
-		}
-		go c.createForManagerCache(ctx, savedMsg, &ticket)
-	case domain.MsgFromTypeSystem:
-		var savedMsgClient, savedMsgManager *domain.Msg
-		savedMsgClient, err = c.createForClientDB(ctx, msg, &ticket, files, tx)
-		if err != nil {
-			return err
-		}
 
-		savedMsgManager, err = c.createForManagerDB(ctx, msg, &ticket, files, tx)
-		if err != nil {
-			return err
-		}
+	savedMsg, err := c.msgRepo.Create(ctx, msg, user.UUID, tx)
+	if err != nil {
+		return err
+	}
 
-		go c.createForClientCache(ctx, savedMsgClient, &ticket)
-		go c.createForManagerCache(ctx, savedMsgManager, &ticket)
-	default:
-		return fmt.Errorf("Unknown MsgFromType")
+	if err := c.createFileForMsg(ctx, savedMsg, files, tx); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
 
+	go c.msgCache.SetMsg(ctx, savedMsg)
+
 	return nil
 }
 
-func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID string) (res []*domain.Msg, ok bool, err error) {
+func (c *ChatUseCase) GetAllNew(ctx context.Context, user domain.UserSystemInfo) (res []domain.Msg, ok bool, err error) {
 	timeOutContext, cf := context.WithTimeout(ctx, c.longPullReadTimeOut)
 	defer cf()
 
@@ -151,10 +121,9 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID string) (res []*do
 		case <-timeOutContext.Done():
 			return
 		case <-ticker.C:
-			res, ok, err = c.msgCache.Get(timeOutContext, userUUID)
+			res, ok, err = c.msgCache.GetMsgByUserUUID(timeOutContext, user.UUID)
 			if err != nil {
-				slog.Error("read from cache error")
-				res, err = c.msgRepo.GetUnread(ctx, userUUID, nil)
+				res, err = c.msgRepo.GetUnread(ctx, user.UUID, nil)
 				if err != nil {
 					return
 				} else if len(res) > 0 {
@@ -165,7 +134,7 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID string) (res []*do
 	}
 
 	for _, msg := range res {
-		if err = c.decryptMsgText(msg); err != nil {
+		if err = c.decryptMsgText(&msg); err != nil {
 			return
 		}
 	}
@@ -173,17 +142,17 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID string) (res []*do
 	return
 }
 
-func (c *ChatUseCase) MarkAsRead(ctx context.Context, userUUID string, msgIDs []int) error {
+func (c *ChatUseCase) MarkAsRead(ctx context.Context, user domain.UserSystemInfo, msgIDs []int) error {
 	tx, err := c.mainRepo.CreateSession(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	for _, id := range msgIDs {
-		id := id
-		go c.msgCache.DeleteByMsgID(ctx, userUUID, id)
-		if err := c.msgRepo.MarkReadByID(ctx, userUUID, id, tx); err != nil {
+	for _, msgID := range msgIDs {
+		msgID := msgID
+		go c.msgCache.DeleteByMsgID(ctx, user.UUID, msgID)
+		if err := c.msgRepo.MarkReadByID(ctx, user.UUID, msgID, tx); err != nil {
 			return err
 		}
 	}
@@ -195,14 +164,18 @@ func (c *ChatUseCase) MarkAsRead(ctx context.Context, userUUID string, msgIDs []
 	return nil
 }
 
-func (c *ChatUseCase) GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]*domain.Msg, error) {
-	msges, err := c.msgRepo.GetHistory(ctx, userUUID, ticketUUID, from, to)
+func (c *ChatUseCase) GetHistory(ctx context.Context, user domain.UserSystemInfo, ticketUUID int, from, to time.Time) ([]domain.Msg, error) {
+	if to.Sub(from) > oneMonthDuration {
+		return nil, domain.ErrDurationFromTo
+	}
+
+	msges, err := c.msgRepo.GetHistory(ctx, user.UUID, ticketUUID, from, to)
 	if err != nil {
 		return nil, err
 	}
 
 	for _, msg := range msges {
-		if err = c.decryptMsgText(msg); err != nil {
+		if err = c.decryptMsgText(&msg); err != nil {
 			return nil, err
 		}
 	}
@@ -282,54 +255,6 @@ func (c *ChatUseCase) createAdd(ticketID int) []byte {
 	))
 }
 
-func (c *ChatUseCase) createForClientDB(ctx context.Context, msg domain.CreateMsg, ticket *domain.Ticket, files []domain.CreateFile, tx pgx.Tx) (*domain.Msg, error) {
-	savedMsg, err := c.msgRepo.CreateForClient(ctx, msg, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	savedMsg.Files = make([]domain.MsgFileContent, 0, len(msg.Files))
-	for _, file := range files {
-		fileObj, err := c.msgRepo.CreateFile(ctx, savedMsg.ID, file.Name, file.Path, tx)
-		if err != nil {
-			return nil, err
-		}
-		savedMsg.Files = append(savedMsg.Files, fileObj)
-	}
-	return savedMsg, nil
-}
-
-func (c *ChatUseCase) createForClientCache(ctx context.Context, msg *domain.Msg, ticket *domain.Ticket) error {
-	if err := c.msgCache.Set(ctx, ticket.ClientUserUUID, msg); err != nil {
-		slog.Error("save to cache error")
-		return err
-	}
-	return nil
-}
-
-func (c *ChatUseCase) createForManagerDB(ctx context.Context, msg domain.CreateMsg, ticket *domain.Ticket, files []domain.CreateFile, tx pgx.Tx) (*domain.Msg, error) {
-	savedMsg, err := c.msgRepo.CreateForManager(ctx, msg, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	savedMsg.Files = make([]domain.MsgFileContent, 0, len(msg.Files))
-	for _, file := range files {
-		fileObj, err := c.msgRepo.CreateFile(ctx, savedMsg.ID, file.Name, file.Path, tx)
-		if err != nil {
-			return nil, err
-		}
-		savedMsg.Files = append(savedMsg.Files, fileObj)
-	}
-	return savedMsg, nil
-}
-func (c *ChatUseCase) createForManagerCache(ctx context.Context, msg *domain.Msg, ticket *domain.Ticket) error {
-	if err := c.msgCache.Set(ctx, ticket.ManagerUserUUID, msg); err != nil {
-		return err
-	}
-	return nil
-}
-
 func (c *ChatUseCase) deleteFormS3(ctx context.Context, pathes []string) error {
 	errG, ctxG := errgroup.WithContext(ctx)
 	errG.SetLimit(3)
@@ -345,5 +270,17 @@ func (c *ChatUseCase) deleteFormS3(ctx context.Context, pathes []string) error {
 		return err
 	}
 
+	return nil
+}
+
+func (c *ChatUseCase) createFileForMsg(ctx context.Context, msg *domain.Msg, files []domain.CreateFile, tx pgx.Tx) error {
+	msg.Files = make([]domain.MsgFileContent, 0, len(msg.Files))
+	for _, file := range files {
+		fileObj, err := c.msgRepo.CreateFile(ctx, msg.ID, file.Name, file.Path, tx)
+		if err != nil {
+			return err
+		}
+		msg.Files = append(msg.Files, *fileObj)
+	}
 	return nil
 }

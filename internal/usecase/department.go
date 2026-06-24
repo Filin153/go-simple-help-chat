@@ -8,9 +8,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-const (
-	oneMonthDuration = time.Hour * 24 * 31
-)
 
 type DepartmentRepo interface {
 	Create(ctx context.Context, createDepartment domain.CreateDepartment, tx pgx.Tx) (int, error)
