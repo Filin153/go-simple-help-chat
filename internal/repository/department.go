@@ -42,20 +42,20 @@ func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx)
 	return res, nil
 }
 
-func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error) {
+func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (*domain.Department, error) {
 	const query = `SELECT * FROM "departments" WHERE "id"=$1;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, id)
 	if err != nil {
-		return domain.Department{}, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	res, err := pgx.CollectOneRow(rows, pgx.RowToStructByName[domain.Department])
 	if err != nil {
-		return domain.Department{}, err
+		return nil, err
 	}
 
-	return res, err
+	return &res, err
 }
 
 func (d *DepartmentRepo) Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error {

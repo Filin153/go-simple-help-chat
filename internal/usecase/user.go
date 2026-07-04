@@ -37,7 +37,10 @@ func NewUserUseCase(userRepo UserRepo, pswdService UserPswdService) *UserUseCase
 }
 
 // GetAll returns all users.
-func (u *UserUseCase) GetAll(ctx context.Context, page, limit int) ([]domain.User, error) {
+func (u *UserUseCase) GetAll(ctx context.Context, user domain.UserSystemInfo, page, limit int) ([]domain.User, error) {
+	if user.UserRole != domain.UserRoleAdmin {
+		return nil, domain.ErrAccess
+	}
 	return u.userRepo.GetAll(ctx, page, limit, nil)
 }
 
@@ -52,38 +55,49 @@ func (u *UserUseCase) GetByLogin(ctx context.Context, login string) (*domain.Use
 }
 
 // Create validates and stores a new user.
-func (u *UserUseCase) Create(ctx context.Context, user domain.CreateUser) error {
-	if len(user.Password) < 6 {
+func (u *UserUseCase) Create(ctx context.Context, user domain.UserSystemInfo, userForCreate domain.CreateUser) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
+
+	if len(userForCreate.Password) < 6 {
 		return domain.ErrShortPassword
 	}
 
-	passwordHash, err := u.pswdService.CreatePasswordHash(user.Password)
+	passwordHash, err := u.pswdService.CreatePasswordHash(userForCreate.Password)
 	if err != nil {
 		return err
 	}
-	user.Password = passwordHash
+	userForCreate.Password = passwordHash
 
-	return u.userRepo.Create(ctx, user, nil)
+	return u.userRepo.Create(ctx, userForCreate, nil)
 }
 
 // UpdateByUUID updates a user and hashes a new password when provided.
-func (u *UserUseCase) UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser) error {
-	if user.Password != "" {
-		if len(user.Password) < 6 {
+func (u *UserUseCase) UpdateByUUID(ctx context.Context, user domain.UserSystemInfo, uuid string, userForUpdate domain.UpdateUser) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
+
+	if userForUpdate.Password != "" {
+		if len(userForUpdate.Password) < 6 {
 			return domain.ErrShortPassword
 		}
 
-		passwordHash, err := u.pswdService.CreatePasswordHash(user.Password)
+		passwordHash, err := u.pswdService.CreatePasswordHash(userForUpdate.Password)
 		if err != nil {
 			return err
 		}
-		user.Password = passwordHash
+		userForUpdate.Password = passwordHash
 	}
 
-	return u.userRepo.UpdateByUUID(ctx, uuid, user, nil)
+	return u.userRepo.UpdateByUUID(ctx, uuid, userForUpdate, nil)
 }
 
 // DeleteByUUID removes a user by UUID.
-func (u *UserUseCase) DeleteByUUID(ctx context.Context, uuid string) error {
+func (u *UserUseCase) DeleteByUUID(ctx context.Context, user domain.UserSystemInfo, uuid string) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
 	return u.userRepo.DeleteByUUID(ctx, uuid, nil)
 }

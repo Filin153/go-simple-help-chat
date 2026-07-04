@@ -27,7 +27,11 @@ func NewScheduleUseCase(mainRepo MainRepo, scheduleRepo ScheduleRepo) *ScheduleU
 	}
 }
 
-func (s *ScheduleUseCase) Edit(ctx context.Context, editSchedule domain.EditSchedule) error {
+func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, editSchedule domain.EditSchedule) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
+
 	tx, err := s.mainRepo.CreateSession(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -59,7 +63,11 @@ func (s *ScheduleUseCase) Edit(ctx context.Context, editSchedule domain.EditSche
 	return nil
 }
 
-func (s *ScheduleUseCase) GenerateBaseSchedule(ctx context.Context, departmentID int) ([]domain.CreateSchedule, error) {
+func (s *ScheduleUseCase) GenerateBaseSchedule(ctx context.Context, user domain.UserSystemInfo, departmentID int) ([]domain.CreateSchedule, error) {
+	if user.UserRole != domain.UserRoleAdmin {
+		return nil, domain.ErrAccess
+	}
+
 	exist, err := s.scheduleRepo.ExistByDepartmentID(ctx, departmentID)
 	if err != nil {
 		return []domain.CreateSchedule{}, err

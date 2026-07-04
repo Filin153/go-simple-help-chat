@@ -62,9 +62,9 @@ func (m *MsgRepo) GetUnread(ctx context.Context, userUUID string, tx pgx.Tx) ([]
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.Msg])
 	return res, nil
 }
-func (m *MsgRepo) MarkReadByID(ctx context.Context, userUUID string, id int, tx pgx.Tx) error {
-	const query = `UPDATE "messages" SET "status"=$1 WHERE "user_uuid"=$2 AND "id"=$3 AND "status"=$4;`
-	tag, err := m.repo.GetDB(tx).Exec(ctx, query, domain.MsgStatusRead, userUUID, id, domain.MsgStatusSent)
+func (m *MsgRepo) MarkReadByID(ctx context.Context, userUUID string, ids []int, tx pgx.Tx) error {
+	const query = `UPDATE "messages" SET "status"=$1 WHERE "user_uuid"=$2 AND "id" IN $3 AND "status"=$4;`
+	tag, err := m.repo.GetDB(tx).Exec(ctx, query, domain.MsgStatusRead, userUUID, ids, domain.MsgStatusSent)
 	if err != nil {
 		return err
 	}

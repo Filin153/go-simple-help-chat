@@ -16,7 +16,7 @@ type MsgCacheInterface interface {
 	SetMsg(ctx context.Context, msg *domain.Msg) error
 	GetMsgByUserUUID(ctx context.Context, userUUID string) ([]domain.Msg, bool, error)
 	GetMsgByTiketID(ctx context.Context, ticketID int) ([]domain.Msg, bool, error)
-	DeleteByMsgID(ctx context.Context, userUUID string, msgID int) error
+	DeleteByMsgID(ctx context.Context, userUUID string, msgIDs []int) error
 }
 
 type S3Interface interface {
@@ -28,7 +28,7 @@ type MsgRepo interface {
 	Create(ctx context.Context, msg domain.CreateMsg, userUUID string, tx pgx.Tx) (*domain.Msg, error)
 	CreateFile(ctx context.Context, msgID int, fileName, path string, tx pgx.Tx) (*domain.MsgFileContent, error)
 	GetUnread(ctx context.Context, userUUID string, tx pgx.Tx) ([]domain.Msg, error)
-	MarkReadByID(ctx context.Context, userUUID string, id int, tx pgx.Tx) error
+	MarkReadByID(ctx context.Context, userUUID string, ids []int, tx pgx.Tx) error
 	GetHistory(ctx context.Context, userUUID string, ticketUUID int, from, to time.Time) ([]domain.Msg, error)
 }
 
@@ -105,7 +105,7 @@ func (c *ChatUseCase) Send(ctx context.Context, user domain.UserSystemInfo, msg 
 	return nil
 }
 
-func (c *ChatUseCase) GetAllNew(ctx context.Context, user domain.UserSystemInfo) (res []domain.Msg, ok bool, err error) {
+func (c *ChatUseCase) GetAllNew(ctx context.Context, userUUID string) (res []domain.Msg, ok bool, err error) {
 	timeOutContext, cf := context.WithTimeout(ctx, c.longPullReadTimeOut)
 	defer cf()
 
@@ -121,9 +121,9 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, user domain.UserSystemInfo)
 		case <-timeOutContext.Done():
 			return
 		case <-ticker.C:
-			res, ok, err = c.msgCache.GetMsgByUserUUID(timeOutContext, user.UUID)
+			res, ok, err = c.msgCache.GetMsgByUserUUID(timeOutContext, userUUID)
 			if err != nil {
-				res, err = c.msgRepo.GetUnread(ctx, user.UUID, nil)
+				res, err = c.msgRepo.GetUnread(ctx, userUUID, nil)
 				if err != nil {
 					return
 				} else if len(res) > 0 {
@@ -143,17 +143,19 @@ func (c *ChatUseCase) GetAllNew(ctx context.Context, user domain.UserSystemInfo)
 }
 
 func (c *ChatUseCase) MarkAsRead(ctx context.Context, user domain.UserSystemInfo, msgIDs []int) error {
+	if user.UserRole != domain.UserRoleClient || user.UserRole != domain.UserRoleManager {
+		return domain.ErrAccess
+	}
+
 	tx, err := c.mainRepo.CreateSession(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
 
-	for _, msgID := range msgIDs {
-		go c.msgCache.DeleteByMsgID(ctx, user.UUID, msgID)
-		if err := c.msgRepo.MarkReadByID(ctx, user.UUID, msgID, tx); err != nil {
-			return err
-		}
+	go c.msgCache.DeleteByMsgID(ctx, user.UUID, msgIDs)
+	if err := c.msgRepo.MarkReadByID(ctx, user.UUID, msgIDs, tx); err != nil {
+		return err
 	}
 
 	if err := tx.Commit(ctx); err != nil {

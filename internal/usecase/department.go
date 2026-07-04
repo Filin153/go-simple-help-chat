@@ -11,12 +11,12 @@ import (
 type DepartmentRepo interface {
 	Create(ctx context.Context, createDepartment domain.CreateDepartment, tx pgx.Tx) (int, error)
 	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
-	GetByID(ctx context.Context, id int, tx pgx.Tx) (domain.Department, error)
+	GetByID(ctx context.Context, id int, tx pgx.Tx) (*domain.Department, error)
 	Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error
 }
 
 type ScheduleUseCaseInterface interface {
-	GenerateBaseSchedule(ctx context.Context, departmentID int) ([]domain.CreateSchedule, error)
+	GenerateBaseSchedule(ctx context.Context, user domain.UserSystemInfo, departmentID int) ([]domain.CreateSchedule, error)
 }
 
 type ScheduleRepoForDepartment interface {
@@ -40,7 +40,11 @@ func NewDepartmentUseCase(mainRepo MainRepo, departmentRepo DepartmentRepo, sche
 	}
 }
 
-func (d *DepartmentUseCase) Create(ctx context.Context, createDepartment domain.CreateDepartment) error {
+func (d *DepartmentUseCase) Create(ctx context.Context, user domain.UserSystemInfo, createDepartment domain.CreateDepartment) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
+
 	tx, err := d.mainRepo.CreateSession(ctx, pgx.TxOptions{})
 	if err != nil {
 		return err
@@ -52,7 +56,7 @@ func (d *DepartmentUseCase) Create(ctx context.Context, createDepartment domain.
 		return err
 	}
 
-	baseSchedule, err := d.scheduleUseCase.GenerateBaseSchedule(ctx, depID)
+	baseSchedule, err := d.scheduleUseCase.GenerateBaseSchedule(ctx, user, depID)
 	if err != nil {
 		return err
 	}
@@ -70,24 +74,31 @@ func (d *DepartmentUseCase) Create(ctx context.Context, createDepartment domain.
 	return nil
 }
 
-func (d *DepartmentUseCase) GetAll(ctx context.Context, page, limit int) ([]domain.DepartmentWithOnScheduleeDay, error) {
+func (d *DepartmentUseCase) GetAll(ctx context.Context, user domain.UserSystemInfo, page, limit int) ([]domain.DepartmentWithOnScheduleeDay, error) {
+	if user.UserRole != domain.UserRoleAdmin {
+		return nil, domain.ErrAccess
+	}
+
 	if limit > 100 {
 		return nil, domain.ErrLimitIsBiggerThen100
 	}
 	return d.departmentRepo.GetAll(ctx, page, limit, nil)
 }
 
-func (d *DepartmentUseCase) GetByID(ctx context.Context, id int) (domain.Department, error) {
+func (d *DepartmentUseCase) GetByID(ctx context.Context, user domain.UserSystemInfo, id int) (*domain.Department, error) {
 	return d.departmentRepo.GetByID(ctx, id, nil)
 }
 
-func (d *DepartmentUseCase) GetSheduleById(ctx context.Context, id int, from, to time.Time) ([]domain.Schedule, error) {
+func (d *DepartmentUseCase) GetSheduleById(ctx context.Context, user domain.UserSystemInfo, id int, from, to time.Time) ([]domain.Schedule, error) {
 	if to.Sub(from) > oneMonthDuration {
 		return nil, domain.ErrDurationFromTo
 	}
 	return d.scheduleRepo.GetFromTo(ctx, id, from, to, nil)
 }
 
-func (d *DepartmentUseCase) Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment) error {
+func (d *DepartmentUseCase) Update(ctx context.Context, user domain.UserSystemInfo, id int, updateDepartment domain.UpdateDepartment) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
 	return d.departmentRepo.Update(ctx, id, updateDepartment, nil)
 }

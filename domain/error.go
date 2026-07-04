@@ -13,4 +13,5 @@ var (
 	ErrUnknownObject        error = errors.New("Неизвестный объект")
 	ErrEmptyObject          error = errors.New("Пустой объект")
 	ErrZeroRowAffected      error = errors.New("Неудалось найти оекты и выполнить действие")
+	ErrAccess               error = errors.New("Недостаточно прав")
 )
