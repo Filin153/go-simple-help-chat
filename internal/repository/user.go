@@ -68,12 +68,34 @@ func (u *UserRepo) GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*do
 	return &res, nil
 }
 
-func (u *UserRepo) Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error {
+func (u *UserRepo) CreateAdmin(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error {
 	const query = `INSERT INTO "users"("login", "password", "role") VALUES ($1, $2, $3);`
 	_, err := u.repo.GetDB(tx).Exec(ctx, query, user.Login, user.Password, user.Role)
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (u *UserRepo) CreateManager(ctx context.Context, manager domain.CreateManager, tx pgx.Tx) error {
+	if tx == nil {
+		return domain.ErrEmptyObject
+	}
+
+	const queryCreateUser = `INSERT INTO "users"("login", "password", "role") VALUES ($1, $2, $3) RETURNING uuid;`
+	const queryCreateManager = `INSERT INTO "managers"("department_id", "user_uuid", "name") VALUES ($1, $2, $3);`
+	var userUUID string
+
+	err := u.repo.GetDB(tx).QueryRow(ctx, queryCreateUser, manager.Login, manager.Password, manager.Role).Scan(&userUUID)
+	if err != nil {
+		return err
+	}
+
+	_, err = u.repo.GetDB(tx).Exec(ctx, queryCreateManager, manager.DepartmentID, userUUID, manager.Name)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -115,10 +137,22 @@ func (u *UserRepo) UpdateUserPasswordByUUID(ctx context.Context, uuid, password 
 
 // CreateClient implements [usecase.AuthUserRepo].
 func (u *UserRepo) CreateClient(ctx context.Context, client domain.CreateClient, tx pgx.Tx) error {
-	const query = `INSERT INTO "clients"("user_uuid", "info") VALUES ($1, $2);`
-	_, err := u.repo.GetDB(tx).Exec(ctx, query, client.UserUUID, client.Info)
+	if tx == nil {
+		return domain.ErrEmptyObject
+	}
+
+	const queryCreateUser = `INSERT INTO "users"("login", "password", "role") VALUES ($1, $2, $3) RETURNING uuid;`
+	const queryCreateClient = `INSERT INTO "clients"("user_uuid", "info") VALUES ($1, $2);`
+
+	_, err := u.repo.GetDB(tx).Exec(ctx, queryCreateUser, client.Login, client.Password, client.Role)
 	if err != nil {
 		return err
 	}
+
+	_, err = u.repo.GetDB(tx).Exec(ctx, queryCreateClient, client.UserUUID, client.Info)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

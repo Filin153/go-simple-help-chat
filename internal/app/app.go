@@ -42,6 +42,7 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	departmentRepo := repository.NewDepartmentRepo(baseRepo)
 	scheduleRepo := repository.NewScheduleRepo(baseRepo)
 	msgRepo := repository.NewMsgRepo(baseRepo)
+	// ticketRepo := repository.NewTicketRepo(baseRepo)
 	s3 := stubS3{}
 	otherSystemLogin := stubOtherSystemLogin{}
 
@@ -57,7 +58,8 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 		passwordService,
 		otherSystemLogin,
 	)
-	userUseCase := usecase.NewUserUseCase(userRepo, passwordService)
+	userUseCase := usecase.NewUserUseCase(baseRepo, userRepo, passwordService)
+	// ticketUseCase := usecase.NewTicketUseCase(ticketRepo)
 	departmentUseCase := usecase.NewDepartmentUseCase(baseRepo, departmentRepo, scheduleUseCase, scheduleRepo)
 	chatUseCase := usecase.NewChatUseCase(msgCache, s3, msgRepo, baseRepo, encryptionService, cfg.Chat.ReadTimeout, cfg.Chat.PollInterval)
 	api := http.NewAPI(authHTTPAdapter{auth: authUseCase}, cfg.HTTP)

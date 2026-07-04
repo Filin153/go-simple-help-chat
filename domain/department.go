@@ -3,8 +3,9 @@ package domain
 import "time"
 
 type Department struct {
-	ID   int    `db:"id" json:"id"`
-	Name string `db:"name" json:"name"`
+	ID      int    `db:"id" json:"id"`
+	Name    string `db:"name" json:"name"`
+	Default bool   `db:"default_dep" json:"default_dep"` // Может быть тольок 1
 }
 
 type CreateDepartment struct {

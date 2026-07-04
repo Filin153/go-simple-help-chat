@@ -9,9 +9,9 @@ const (
 )
 
 type CreateUser struct {
-	Login    string   `json:"login"`
-	Password string   `json:"password"`
-	Role     UserRole `json:"role"`
+	Login    string `json:"login"`
+	Password string `json:"password"`
+	Role     UserRole
 }
 
 type UpdateUser struct {
@@ -32,6 +32,13 @@ type Manager struct {
 	Name         string `db:"name" json:"name"`
 }
 
+type CreateManager struct {
+	CreateUser
+	DepartmentID int    `json:"department_id"`
+	UserUUID     string `json:"user_uuid"`
+	Name         string `json:"name"`
+}
+
 type Client struct {
 	ID       int         `db:"id" json:"id"`
 	UserUUID string      `db:"user_uuid" json:"user_uuid"`
@@ -39,6 +46,7 @@ type Client struct {
 }
 
 type CreateClient struct {
+	CreateUser
 	UserUUID string      `db:"user_uuid" json:"user_uuid"`
 	Info     map[any]any `db:"info" json:"info"`
 }

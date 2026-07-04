@@ -16,7 +16,6 @@ type AuthUserRepo interface {
 	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
 	UpdateUserPasswordByUUID(ctx context.Context, uuid, password string, tx pgx.Tx) error
-	Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
 	CreateClient(ctx context.Context, client domain.CreateClient, tx pgx.Tx) error
 }
 
@@ -101,17 +100,12 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 	user, err := a.userRepo.GetByUUID(ctx, userUUID, tx)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		createUser := domain.CreateUser{
-			Login:    "client_" + uuid.NewString(),
-			Password: pswd,
-			Role:     domain.UserRoleClient,
-		}
-
-		if err := a.userRepo.Create(ctx, createUser, tx); err != nil {
-			return nil, err
-		}
-
 		createClient := domain.CreateClient{
+			CreateUser: domain.CreateUser{
+				Login:    "client_" + uuid.NewString(),
+				Password: pswd,
+				Role:     domain.UserRoleClient,
+			},
 			UserUUID: userUUID,
 			Info:     userInfo,
 		}
@@ -122,7 +116,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 
 		user = &domain.User{
 			UUID:     userUUID,
-			Login:    createUser.Login,
+			Login:    createClient.Login,
 			Password: pswd,
 			Role:     domain.UserRoleClient,
 		}

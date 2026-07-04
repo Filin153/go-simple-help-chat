@@ -12,9 +12,10 @@ type UserRepo interface {
 	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error)
 	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
-	Create(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
 	UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error
 	DeleteByUUID(ctx context.Context, uuid string, tx pgx.Tx) error
+	CreateManager(ctx context.Context, manager domain.CreateManager, tx pgx.Tx) error
+	CreateAdmin(ctx context.Context, user domain.CreateUser, tx pgx.Tx) error
 }
 
 // UserPswdService hashes user passwords.
@@ -24,13 +25,15 @@ type UserPswdService interface {
 
 // UserUseCase handles user management operations.
 type UserUseCase struct {
+	mainRepo    MainRepo
 	userRepo    UserRepo
 	pswdService UserPswdService
 }
 
 // NewUserUseCase builds a UserUseCase with required dependencies.
-func NewUserUseCase(userRepo UserRepo, pswdService UserPswdService) *UserUseCase {
+func NewUserUseCase(mainRepo MainRepo, userRepo UserRepo, pswdService UserPswdService) *UserUseCase {
 	return &UserUseCase{
+		mainRepo:    mainRepo,
 		userRepo:    userRepo,
 		pswdService: pswdService,
 	}
@@ -55,22 +58,54 @@ func (u *UserUseCase) GetByLogin(ctx context.Context, login string) (*domain.Use
 }
 
 // Create validates and stores a new user.
-func (u *UserUseCase) Create(ctx context.Context, user domain.UserSystemInfo, userForCreate domain.CreateUser) error {
+func (u *UserUseCase) CreateManager(ctx context.Context, user domain.UserSystemInfo, manager domain.CreateManager) error {
 	if user.UserRole != domain.UserRoleAdmin {
 		return domain.ErrAccess
 	}
 
-	if len(userForCreate.Password) < 6 {
+	if len(manager.Password) < 6 {
 		return domain.ErrShortPassword
 	}
 
-	passwordHash, err := u.pswdService.CreatePasswordHash(userForCreate.Password)
+	passwordHash, err := u.pswdService.CreatePasswordHash(manager.Password)
 	if err != nil {
 		return err
 	}
-	userForCreate.Password = passwordHash
+	manager.Password = passwordHash
 
-	return u.userRepo.Create(ctx, userForCreate, nil)
+	manager.Role = domain.UserRoleManager
+
+	tx, err := u.mainRepo.CreateSession(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	craeeteErr := u.userRepo.CreateManager(ctx, manager, tx)
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	return craeeteErr
+}
+
+func (u *UserUseCase) CreateAdmin(ctx context.Context, user domain.UserSystemInfo, admin domain.CreateUser) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
+
+	if len(admin.Password) < 6 {
+		return domain.ErrShortPassword
+	}
+
+	passwordHash, err := u.pswdService.CreatePasswordHash(admin.Password)
+	if err != nil {
+		return err
+	}
+	admin.Password = passwordHash
+	admin.Role = domain.UserRoleAdmin
+	craeeteErr := u.userRepo.CreateAdmin(ctx, admin, nil)
+	return craeeteErr
 }
 
 // UpdateByUUID updates a user and hashes a new password when provided.
