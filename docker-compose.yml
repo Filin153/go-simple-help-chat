@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    ports:
+      - "9000:9000" # S3 API Port
+      - "9001:9001" # Web Console Port
+    environment:
+      MINIO_ROOT_USER: miniominio
+      MINIO_ROOT_PASSWORD: miniominio # Must be at least 8 characters
+    volumes:
+      - minio_data:/data
+    command: server --console-address ":9001" /data
+    restart: always
+
+volumes:
+  minio_data:
