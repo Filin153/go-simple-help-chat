@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"shc/domain"
+	"shc/internal/service"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -31,13 +32,13 @@ func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx)
 	const query = `SELECT * FROM departments LIMIT $1 OFFSET $2;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
 	if err != nil {
-		return []domain.DepartmentWithOnScheduleeDay{}, err
+		return nil, err
 	}
 	defer rows.Close()
 
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.DepartmentWithOnScheduleeDay])
 	if err != nil {
-		return []domain.DepartmentWithOnScheduleeDay{}, err
+		return nil, err
 	}
 	return res, nil
 }
@@ -59,8 +60,15 @@ func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (*domai
 }
 
 func (d *DepartmentRepo) Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error {
-	const query = `UPDATE "departments" SET "name"=$2 WHERE "id"=$1;`
-	tag, err := d.repo.GetDB(tx).Exec(ctx, query, id, updateDepartment.Name)
+	updateCol := service.StructToMap(updateDepartment, []string{})
+	query, args, err := getUpdateQuery("departments", updateCol, map[string]any{
+		"id": id,
+	})
+	if err != nil {
+		return err
+	}
+
+	tag, err := d.repo.GetDB(tx).Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}

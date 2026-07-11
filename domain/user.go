@@ -15,7 +15,9 @@ type CreateUser struct {
 }
 
 type UpdateUser struct {
-	CreateUser
+	Login    string `json:"login"`
+	Password string `json:"password"`
+	Role     UserRole
 }
 
 type User struct {
@@ -42,13 +44,13 @@ type CreateManager struct {
 type Client struct {
 	ID       int         `db:"id" json:"id"`
 	UserUUID string      `db:"user_uuid" json:"user_uuid"`
-	Info     map[any]any `db:"info" json:"info"`
+	Info     map[string]any `db:"info" json:"info"`
 }
 
 type CreateClient struct {
 	CreateUser
 	UserUUID string      `db:"user_uuid" json:"user_uuid"`
-	Info     map[any]any `db:"info" json:"info"`
+	Info     map[string]any `db:"info" json:"info"`
 }
 
 type UserSystemInfo struct {

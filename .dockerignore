@@ -1,0 +1,11 @@
+migrations
+docs
+scripts
+secrets
+deploy
+.env.*
+.gitignore
+CODEX.md
+docker-compose.yml
+Makefile
+README.md

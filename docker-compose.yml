@@ -1,19 +1,38 @@
 version: '3.8'
 
 services:
+  app:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./.env
+    volumes:
+      - ./secrets:/secrets
+
   minio:
     image: minio/minio:latest
     container_name: minio
     ports:
       - "9000:9000" # S3 API Port
       - "9001:9001" # Web Console Port
-    environment:
-      MINIO_ROOT_USER: miniominio
-      MINIO_ROOT_PASSWORD: miniominio # Must be at least 8 characters
+    env_file:
+      - ./.env
     volumes:
       - minio_data:/data
     command: server --console-address ":9001" /data
     restart: always
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    env_file:
+      - ./.env
+    volumes:
+      - ./deploy/minio.init.sh:/minio.init.sh
+    entrypoint: /bin/sh /minio.init.sh
 
 volumes:
   minio_data:

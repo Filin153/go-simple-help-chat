@@ -66,6 +66,10 @@ func (j *JWT) CreateTokens(sub string, userRole domain.UserRole, scope []string,
 
 // VerifyAccessToken validates an access token and returns its claims.
 func (j *JWT) VerifyAccessToken(tokenStr string) (*AccessTokenClaims, error) {
+	if tokenStr == "" {
+		return nil, domain.ErrEmptyObject
+	}
+
 	tok, err := parseWithClaims(
 		tokenStr,
 		&AccessTokenClaims{},
@@ -92,6 +96,10 @@ func (j *JWT) VerifyAccessToken(tokenStr string) (*AccessTokenClaims, error) {
 
 // VerifyRefreshToken validates a refresh token and returns its claims.
 func (j *JWT) VerifyRefreshToken(tokenStr string) (*RefreshTokenClaims, error) {
+	if tokenStr == "" {
+		return nil, domain.ErrEmptyObject
+	}
+
 	tok, err := parseWithClaims(
 		tokenStr,
 		&RefreshTokenClaims{},

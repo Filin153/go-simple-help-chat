@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"shc/domain"
+	"shc/internal/service"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -30,7 +32,7 @@ LIMIT $1 OFFSET $2;`
 
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.User])
 	if err != nil {
-		return []domain.User{}, err
+		return nil, err
 	}
 
 	return res, nil
@@ -100,8 +102,14 @@ func (u *UserRepo) CreateManager(ctx context.Context, manager domain.CreateManag
 }
 
 func (u *UserRepo) UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error {
-	const query = `UPDATE "users" SET "login"=$2, "password"=$3, "role"=$4 WHERE "uuid"=$1;`
-	tag, err := u.repo.GetDB(tx).Exec(ctx, query, uuid, user.Login, user.Password, user.Role)
+	updateCol := service.StructToMap(user, []string{})
+	query, args, err := getUpdateQuery("users", updateCol, map[string]any{
+		"uuid": uuid,
+	})
+	if err != nil {
+		return err
+	}
+	tag, err := u.repo.GetDB(tx).Exec(ctx, query, args...)
 	if err != nil {
 		return err
 	}
@@ -141,15 +149,20 @@ func (u *UserRepo) CreateClient(ctx context.Context, client domain.CreateClient,
 		return domain.ErrEmptyObject
 	}
 
-	const queryCreateUser = `INSERT INTO "users"("login", "password", "role") VALUES ($1, $2, $3) RETURNING uuid;`
+	const queryCreateUser = `INSERT INTO "users"("uuid", "login", "password", "role") VALUES ($1, $2, $3, $4);`
 	const queryCreateClient = `INSERT INTO "clients"("user_uuid", "info") VALUES ($1, $2);`
 
-	_, err := u.repo.GetDB(tx).Exec(ctx, queryCreateUser, client.Login, client.Password, client.Role)
+	_, err := u.repo.GetDB(tx).Exec(ctx, queryCreateUser, client.UserUUID, client.Login, client.Password, client.Role)
 	if err != nil {
 		return err
 	}
 
-	_, err = u.repo.GetDB(tx).Exec(ctx, queryCreateClient, client.UserUUID, client.Info)
+	userInfoJSON, err := json.Marshal(client.Info)
+	if err != nil {
+		return err
+	}
+
+	_, err = u.repo.GetDB(tx).Exec(ctx, queryCreateClient, client.UserUUID, userInfoJSON)
 	if err != nil {
 		return err
 	}

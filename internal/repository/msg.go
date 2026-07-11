@@ -60,6 +60,9 @@ func (m *MsgRepo) GetUnread(ctx context.Context, userUUID string, tx pgx.Tx) ([]
 	defer rows.Close()
 
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.Msg])
+	if err != nil {
+		return nil, err
+	}
 	return res, nil
 }
 func (m *MsgRepo) MarkReadByID(ctx context.Context, userUUID string, ids []int, tx pgx.Tx) error {
@@ -85,5 +88,8 @@ func (m *MsgRepo) GetHistory(ctx context.Context, userUUID string, ticketUUID in
 	defer rows.Close()
 
 	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.Msg])
+	if err != nil {
+		return nil, err
+	}
 	return res, nil
 }

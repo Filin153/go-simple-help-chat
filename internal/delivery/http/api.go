@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"shc/config"
 	"shc/domain"
+	"shc/internal/service"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -16,7 +17,7 @@ type AuthInterface interface {
 	Login(ctx context.Context, login, password string) (*domain.JWTTokens, error)
 	LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error)
 	Logout(ctx context.Context, accessToken string) error
-	GetAccessTokenClaims(ctx context.Context, accessToken string) error
+	GetAccessTokenClaims(ctx context.Context, accessToken string) (*service.AccessTokenClaims, error)
 	Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error)
 }
 
@@ -59,7 +60,7 @@ func (a *API) Run() error {
 	return a.server.ListenAndServe()
 }
 
-func (a *API) Stop(ctx context.Context) error {
+func (a *API) Shutdown(ctx context.Context) error {
 	return a.server.Shutdown(ctx)
 }
 
@@ -67,6 +68,9 @@ func (a *API) setup() {
 	a.router.Route("/api/v1", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/login", a.userLoginHTTP)
+			r.Post("/login/client", a.clientLoginHTTP)
+			r.Post("/logout", a.logoutHTTP)
+			r.Post("/refresh", a.refreshTokenHTTP)
 		})
 	})
 }

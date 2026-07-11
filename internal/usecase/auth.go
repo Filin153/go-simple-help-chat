@@ -42,7 +42,7 @@ type AuthPswdService interface {
 
 // AuthOtherSystemLogin authenticates a client in an external system.
 type AuthOtherSystemLogin interface {
-	Login(ctx context.Context, args ...any) (userUUID string, userInfo map[any]any, err error)
+	Login(ctx context.Context, args ...any) (userUUID string, userInfo map[string]any, err error)
 }
 
 // RoleScopes maps a role to allowed token scopes.
@@ -99,7 +99,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 
 	user, err := a.userRepo.GetByUUID(ctx, userUUID, tx)
 
-	if errors.Is(err, pgx.ErrNoRows) {
+	if err == pgx.ErrNoRows {
 		createClient := domain.CreateClient{
 			CreateUser: domain.CreateUser{
 				Login:    "client_" + uuid.NewString(),
@@ -133,6 +133,7 @@ func (a *AuthUseCase) LoginClient(ctx context.Context, args ...any) (*domain.JWT
 	if err != nil {
 		return nil, err
 	}
+
 
 	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, user.UUID, tx); err != nil {
 		return nil, err
@@ -187,13 +188,13 @@ func (a *AuthUseCase) Login(ctx context.Context, login, password string) (*domai
 }
 
 // Logout revokes refresh tokens for the access token subject.
-func (a *AuthUseCase) Logout(ctx context.Context, accessToken string) error {
-	token, err := a.jwtService.VerifyAccessToken(accessToken)
+func (a *AuthUseCase) Logout(ctx context.Context, refreshToken string) error {
+	token, err := a.jwtService.VerifyRefreshToken(refreshToken)
 	if err != nil {
 		return err
 	}
 
-	if err := a.refreshTokenRepo.DeleteByUserUUID(ctx, token.Subject, nil); err != nil {
+	if err := a.refreshTokenRepo.DeleteByJTI(ctx, token.JTI, nil); err != nil {
 		return err
 	}
 
@@ -201,7 +202,7 @@ func (a *AuthUseCase) Logout(ctx context.Context, accessToken string) error {
 }
 
 // GetAccessTokenClaims returns validated access token claims.
-func (a *AuthUseCase) GetAccessTokenClaims(accessToken string) (*service.AccessTokenClaims, error) {
+func (a *AuthUseCase) GetAccessTokenClaims(ctx context.Context, accessToken string) (*service.AccessTokenClaims, error) {
 	return a.jwtService.VerifyAccessToken(accessToken)
 }
 

@@ -1,7 +1,12 @@
 package config
 
 import (
+	"encoding/hex"
+	"fmt"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"shc/domain"
@@ -9,7 +14,9 @@ import (
 
 type Config struct {
 	PostgresDSN string
+	MiniO       MiniOConfig
 	Auth        AuthConfig
+	Admin       AdminConfig
 	JWT         JWTConfig
 	Encryption  EncryptionConfig
 	Chat        ChatConfig
@@ -18,6 +25,19 @@ type Config struct {
 
 type AuthConfig struct {
 	RoleScopes map[domain.UserRole][]string
+}
+
+type AdminConfig struct {
+	Login    string
+	Password string
+}
+
+type MiniOConfig struct {
+	URL           string
+	Login         string
+	Password      string
+	ImageBucket   string
+	PrivateBucket string
 }
 
 type JWTConfig struct {
@@ -58,136 +78,285 @@ type CookieConfig struct {
 	SameSite        http.SameSite
 }
 
-func Default() Config {
-	var encryptionKey [32]byte
-	copy(encryptionKey[:], []byte("0123456789abcdef0123456789abcdef"))
+func NewConfig() (Config, error) {
+	var cfg Config
 
-	return Config{
-		Auth: AuthConfig{
-			RoleScopes: map[domain.UserRole][]string{
-				domain.UserRoleAdmin:   {"*"},
-				domain.UserRoleManager: {"chat", "department", "schedule"},
-				domain.UserRoleClient:  {"chat"},
-			},
-		},
-		JWT: JWTConfig{
-			Issuer:          "simple-help-chat",
-			SignKey:         "simple-help-chat-dev-jwt-sign-key",
-			AccessTokenTTL:  10 * time.Minute,
-			RefreshTokenTTL: 30 * 24 * time.Hour,
-		},
-		Encryption: EncryptionConfig{
-			Key32: encryptionKey,
-		},
-		Chat: ChatConfig{
-			ReadTimeout:  30 * time.Second,
-			PollInterval: time.Second,
-		},
-		HTTP: HTTPConfig{
-			Addr: ":8080",
-			CORS: CORSConfig{
-				AllowedOrigins:   []string{"https://*", "http://*"},
-				AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE"},
-				AllowedHeaders:   []string{""},
-				ExposedHeaders:   []string{""},
-				AllowCredentials: true,
-				MaxAge:           300,
-			},
-			Cookie: CookieConfig{
-				AccessTokenTTL:  10 * time.Minute,
-				RefreshTokenTTL: 30 * 24 * time.Hour,
-				Secure:          true,
-				SameSite:        http.SameSiteStrictMode,
-			},
-		},
+	var err error
+	cfg.PostgresDSN, err = requiredEnvValue("POSTGRES_DSN")
+	if err != nil {
+		return Config{}, err
 	}
+
+	cfg.MiniO.URL, err = requiredEnvValue("MINIO_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MiniO.Login, err = requiredEnvValue("MINIO_ROOT_USER")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MiniO.Password, err = requiredEnvValue("MINIO_ROOT_PASSWORD")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MiniO.ImageBucket, err = requiredEnvValue("MINIO_IMAGE_BUCKET")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.MiniO.PrivateBucket, err = requiredEnvValue("MINIO_PRIVATE_BUCKET")
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.Auth.RoleScopes = make(map[domain.UserRole][]string, 3)
+	cfg.Auth.RoleScopes[domain.UserRoleAdmin], err = requiredEnvList("AUTH_ADMIN_SCOPES")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.RoleScopes[domain.UserRoleManager], err = requiredEnvList("AUTH_MANAGER_SCOPES")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Auth.RoleScopes[domain.UserRoleClient], err = requiredEnvList("AUTH_CLIENT_SCOPES")
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.Admin.Login, err = requiredEnvValue("ADMIN_LOGIN")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Admin.Password, err = requiredEnvValue("ADMIN_PASSWORD")
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.JWT.Issuer, err = requiredEnvValue("JWT_ISSUER")
+	if err != nil {
+		return Config{}, err
+	}
+	signKeyFile, err := requiredEnvValue("JWT_SIGN_KEY_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.JWT.SignKey, err = readSecretTextFile(signKeyFile, "JWT_SIGN_KEY_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.JWT.AccessTokenTTL, err = requiredDuration("JWT_ACCESS_TOKEN_TTL")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.JWT.RefreshTokenTTL, err = requiredDuration("JWT_REFRESH_TOKEN_TTL")
+	if err != nil {
+		return Config{}, err
+	}
+
+	encryptionKeyFile, err := requiredEnvValue("ENCRYPTION_KEY_FILE")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Encryption.Key32, err = readEncryptionKeyFile(encryptionKeyFile)
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.Chat.ReadTimeout, err = requiredDuration("CHAT_READ_TIMEOUT")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.Chat.PollInterval, err = requiredDuration("CHAT_POLL_INTERVAL")
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.HTTP.Addr, err = requiredEnvValue("HTTP_ADDR")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.CORS.AllowedOrigins, err = requiredEnvList("CORS_ALLOWED_ORIGINS")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.CORS.AllowedMethods, err = requiredEnvList("CORS_ALLOWED_METHODS")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.CORS.AllowedHeaders, err = requiredEnvList("CORS_ALLOWED_HEADERS")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.CORS.ExposedHeaders, err = requiredEnvList("CORS_EXPOSED_HEADERS")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.CORS.AllowCredentials, err = requiredBool("CORS_ALLOW_CREDENTIALS")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.CORS.MaxAge, err = requiredInt("CORS_MAX_AGE")
+	if err != nil {
+		return Config{}, err
+	}
+
+	cfg.HTTP.Cookie.AccessTokenTTL, err = requiredDuration("COOKIE_ACCESS_TOKEN_TTL")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.Cookie.RefreshTokenTTL, err = requiredDuration("COOKIE_REFRESH_TOKEN_TTL")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.Cookie.Secure, err = requiredBool("COOKIE_SECURE")
+	if err != nil {
+		return Config{}, err
+	}
+	sameSite, err := requiredEnvValue("COOKIE_SAME_SITE")
+	if err != nil {
+		return Config{}, err
+	}
+	cfg.HTTP.Cookie.SameSite, err = parseSameSite(sameSite)
+	if err != nil {
+		return Config{}, err
+	}
+
+	return cfg, nil
 }
 
-func ApplyDefaults(cfg Config) Config {
-	defaults := Default()
-
-	if cfg.PostgresDSN != "" {
-		defaults.PostgresDSN = cfg.PostgresDSN
+func requiredEnvValue(key string) (string, error) {
+	value := envValue(key)
+	if value == "" {
+		return "", fmt.Errorf("%s is required", key)
 	}
-
-	if len(cfg.Auth.RoleScopes) > 0 {
-		defaults.Auth.RoleScopes = cfg.Auth.RoleScopes
-	}
-
-	if cfg.JWT.Issuer != "" {
-		defaults.JWT.Issuer = cfg.JWT.Issuer
-	}
-	if cfg.JWT.SignKey != "" {
-		defaults.JWT.SignKey = cfg.JWT.SignKey
-	}
-	if cfg.JWT.AccessTokenTTL != 0 {
-		defaults.JWT.AccessTokenTTL = cfg.JWT.AccessTokenTTL
-	}
-	if cfg.JWT.RefreshTokenTTL != 0 {
-		defaults.JWT.RefreshTokenTTL = cfg.JWT.RefreshTokenTTL
-	}
-
-	if cfg.Encryption.Key32 != ([32]byte{}) {
-		defaults.Encryption.Key32 = cfg.Encryption.Key32
-	}
-
-	if cfg.Chat.ReadTimeout != 0 {
-		defaults.Chat.ReadTimeout = cfg.Chat.ReadTimeout
-	}
-	if cfg.Chat.PollInterval != 0 {
-		defaults.Chat.PollInterval = cfg.Chat.PollInterval
-	}
-
-	if cfg.HTTP.Addr != "" {
-		defaults.HTTP.Addr = cfg.HTTP.Addr
-	}
-	if len(cfg.HTTP.CORS.AllowedOrigins) > 0 {
-		defaults.HTTP.CORS.AllowedOrigins = cfg.HTTP.CORS.AllowedOrigins
-	}
-	if len(cfg.HTTP.CORS.AllowedMethods) > 0 {
-		defaults.HTTP.CORS.AllowedMethods = cfg.HTTP.CORS.AllowedMethods
-	}
-	if len(cfg.HTTP.CORS.AllowedHeaders) > 0 {
-		defaults.HTTP.CORS.AllowedHeaders = cfg.HTTP.CORS.AllowedHeaders
-	}
-	if len(cfg.HTTP.CORS.ExposedHeaders) > 0 {
-		defaults.HTTP.CORS.ExposedHeaders = cfg.HTTP.CORS.ExposedHeaders
-	}
-	if cfg.HTTP.CORS.MaxAge != 0 {
-		defaults.HTTP.CORS.MaxAge = cfg.HTTP.CORS.MaxAge
-	}
-	if !isZeroCORSConfig(cfg.HTTP.CORS) {
-		defaults.HTTP.CORS.AllowCredentials = cfg.HTTP.CORS.AllowCredentials
-	}
-
-	if cfg.HTTP.Cookie.AccessTokenTTL != 0 {
-		defaults.HTTP.Cookie.AccessTokenTTL = cfg.HTTP.Cookie.AccessTokenTTL
-	}
-	if cfg.HTTP.Cookie.RefreshTokenTTL != 0 {
-		defaults.HTTP.Cookie.RefreshTokenTTL = cfg.HTTP.Cookie.RefreshTokenTTL
-	}
-	if cfg.HTTP.Cookie.SameSite != 0 {
-		defaults.HTTP.Cookie.SameSite = cfg.HTTP.Cookie.SameSite
-	}
-	if !isZeroCookieConfig(cfg.HTTP.Cookie) {
-		defaults.HTTP.Cookie.Secure = cfg.HTTP.Cookie.Secure
-	}
-
-	return defaults
+	return value, nil
 }
 
-func isZeroCORSConfig(cfg CORSConfig) bool {
-	return len(cfg.AllowedOrigins) == 0 &&
-		len(cfg.AllowedMethods) == 0 &&
-		len(cfg.AllowedHeaders) == 0 &&
-		len(cfg.ExposedHeaders) == 0 &&
-		!cfg.AllowCredentials &&
-		cfg.MaxAge == 0
+func envValue(key string) string {
+	if value, ok := os.LookupEnv(key); ok && value != "" {
+		return value
+	}
+	return ""
 }
 
-func isZeroCookieConfig(cfg CookieConfig) bool {
-	return cfg.AccessTokenTTL == 0 &&
-		cfg.RefreshTokenTTL == 0 &&
-		!cfg.Secure &&
-		cfg.SameSite == 0
+func readSecretTextFile(path, envName string) (string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", envName, err)
+	}
+
+	value := strings.TrimSpace(string(data))
+	if value == "" {
+		return "", fmt.Errorf("%s: secret file is empty", envName)
+	}
+
+	return value, nil
+}
+
+func readEncryptionKeyFile(path string) ([32]byte, error) {
+	var key [32]byte
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return key, fmt.Errorf("ENCRYPTION_KEY_FILE: %w", err)
+	}
+
+	if len(data) == 32 {
+		copy(key[:], data)
+		return key, nil
+	}
+
+	value := strings.TrimSpace(string(data))
+	if decoded, err := hex.DecodeString(value); err == nil && len(decoded) == 32 {
+		copy(key[:], decoded)
+		return key, nil
+	}
+	if len(value) == 32 {
+		copy(key[:], []byte(value))
+		return key, nil
+	}
+
+	return key, fmt.Errorf("ENCRYPTION_KEY_FILE must contain 32 raw bytes, 32 text bytes, or 64 hex characters")
+}
+
+func requiredEnvList(key string) ([]string, error) {
+	value, err := requiredEnvValue(key)
+	if err != nil {
+		return nil, err
+	}
+
+	values := splitEnvList(value)
+	if len(values) == 0 {
+		return nil, fmt.Errorf("%s must contain at least one value", key)
+	}
+
+	return values, nil
+}
+
+func splitEnvList(value string) []string {
+	parts := strings.Split(value, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			result = append(result, part)
+		}
+	}
+	return result
+}
+
+func requiredDuration(key string) (time.Duration, error) {
+	value, err := requiredEnvValue(key)
+	if err != nil {
+		return 0, err
+	}
+
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+
+	return duration, nil
+}
+
+func requiredBool(key string) (bool, error) {
+	value, err := requiredEnvValue(key)
+	if err != nil {
+		return false, err
+	}
+
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", key, err)
+	}
+
+	return parsed, nil
+}
+
+func requiredInt(key string) (int, error) {
+	value, err := requiredEnvValue(key)
+	if err != nil {
+		return 0, err
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", key, err)
+	}
+
+	return parsed, nil
+}
+
+func parseSameSite(value string) (http.SameSite, error) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "default":
+		return http.SameSiteDefaultMode, nil
+	case "lax":
+		return http.SameSiteLaxMode, nil
+	case "strict":
+		return http.SameSiteStrictMode, nil
+	case "none":
+		return http.SameSiteNoneMode, nil
+	default:
+		return http.SameSiteDefaultMode, fmt.Errorf("COOKIE_SAME_SITE must be one of: default, lax, strict, none")
+	}
 }
