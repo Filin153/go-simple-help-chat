@@ -19,6 +19,7 @@ type UpdateDepartment struct {
 type DepartmentWithOnScheduleeDay struct {
 	ID        int       `db:"id" json:"id"`
 	Name      string    `db:"name" json:"name"`
+	Default   bool      `db:"default_dep" json:"default_dep"`
 	WorkFrom  time.Time `db:"work_from" json:"work_from"`
 	WorkTo    time.Time `db:"work_to" json:"work_to"`
 	IsWeekEnd bool      `db:"is_week_end" json:"is_week_end"`

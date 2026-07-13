@@ -29,7 +29,34 @@ func (d *DepartmentRepo) Create(ctx context.Context, createDepartment domain.Cre
 }
 
 func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
-	const query = `SELECT * FROM departments LIMIT $1 OFFSET $2;`
+	const query = `SELECT
+	d."id",
+	d."name",
+	d."default_dep",
+	s."work_from",
+	s."work_to",
+	s."is_week_end"
+FROM "departments" AS d
+JOIN LATERAL (
+	SELECT
+		"work_from",
+		"work_to",
+		"is_week_end"
+	FROM "schedules"
+	WHERE "department_id" = d."id"
+	ORDER BY
+		CASE
+			WHEN EXTRACT(MONTH FROM "work_from") = EXTRACT(MONTH FROM CURRENT_DATE)
+				AND EXTRACT(DAY FROM "work_from") = EXTRACT(DAY FROM CURRENT_DATE)
+			THEN 0
+			ELSE 1
+		END,
+		"work_from" ASC,
+		"id" ASC
+	LIMIT 1
+) AS s ON TRUE
+ORDER BY d."id" ASC
+LIMIT $1 OFFSET $2;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
 	if err != nil {
 		return nil, err

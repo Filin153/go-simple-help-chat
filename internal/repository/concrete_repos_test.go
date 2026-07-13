@@ -96,10 +96,10 @@ func Test_DepartmentRepo(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
 		now := time.Now()
-		mock.ExpectQuery(`SELECT \* FROM departments`).
+		mock.ExpectQuery(`FROM "departments" AS d`).
 			WithArgs(10, 10).
-			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "work_from", "work_to", "is_week_end"}).
-				AddRow(1, "Support", now, now.Add(time.Hour), false))
+			WillReturnRows(pgxmock.NewRows([]string{"id", "name", "default_dep", "work_from", "work_to", "is_week_end"}).
+				AddRow(1, "Support", true, now, now.Add(time.Hour), false))
 
 		items, err := repo.GetAll(context.Background(), 2, 10, nil)
 		if err != nil || len(items) != 1 || items[0].ID != 1 {
@@ -112,7 +112,7 @@ func Test_DepartmentRepo(t *testing.T) {
 		mock, baseRepo := newMockRepository(t)
 		repo := NewDepartmentRepo(baseRepo)
 		wantErr := errors.New("query error")
-		mock.ExpectQuery(`SELECT \* FROM departments`).
+		mock.ExpectQuery(`FROM "departments" AS d`).
 			WithArgs(10, 0).
 			WillReturnError(wantErr)
 

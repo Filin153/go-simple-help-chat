@@ -4,8 +4,6 @@ import (
 	"context"
 	"net/http"
 	"shc/config"
-	"shc/domain"
-	"shc/internal/service"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -13,23 +11,16 @@ import (
 	"github.com/go-playground/validator/v10"
 )
 
-type AuthInterface interface {
-	Login(ctx context.Context, login, password string) (*domain.JWTTokens, error)
-	LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error)
-	Logout(ctx context.Context, accessToken string) error
-	GetAccessTokenClaims(ctx context.Context, accessToken string) (*service.AccessTokenClaims, error)
-	Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error)
-}
-
 type API struct {
-	router    *chi.Mux
-	server    *http.Server
-	auth      AuthInterface
-	config    config.HTTPConfig
-	validator *validator.Validate
+	router     *chi.Mux
+	server     *http.Server
+	auth       AuthInterface
+	department DepartmentInterface
+	config     config.HTTPConfig
+	validator  *validator.Validate
 }
 
-func NewAPI(auth AuthInterface, httpConfig config.HTTPConfig) *API {
+func NewAPI(auth AuthInterface, department DepartmentInterface, httpConfig config.HTTPConfig) *API {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(cors.Handler(cors.Options{
@@ -47,9 +38,10 @@ func NewAPI(auth AuthInterface, httpConfig config.HTTPConfig) *API {
 			Addr:    httpConfig.Addr,
 			Handler: r,
 		},
-		config:    httpConfig,
-		validator: validator.New(validator.WithRequiredStructEnabled()),
-		auth:      auth,
+		config:     httpConfig,
+		validator:  validator.New(validator.WithRequiredStructEnabled()),
+		auth:       auth,
+		department: department,
 	}
 	api.setup()
 
@@ -71,6 +63,11 @@ func (a *API) setup() {
 			r.Post("/login/client", a.clientLoginHTTP)
 			r.Post("/logout", a.logoutHTTP)
 			r.Post("/refresh", a.refreshTokenHTTP)
+		})
+		r.Route("/department", func(r chi.Router) {
+			r.Use(a.authMiddleware)
+			r.Post("/", a.departmentCreate)
+			r.Get("/", a.departmentGetAll)
 		})
 	})
 }

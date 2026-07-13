@@ -1,10 +1,12 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"shc/config"
 	"shc/domain"
+	"shc/internal/service"
 	"time"
 )
 
@@ -12,6 +14,14 @@ const (
 	cookieAccessTokenName  = "access_token"
 	cookieRefreshTokenName = "refresh_token"
 )
+
+type AuthInterface interface {
+	Login(ctx context.Context, login, password string) (*domain.JWTTokens, error)
+	LoginClient(ctx context.Context, args ...any) (*domain.JWTTokens, error)
+	Logout(ctx context.Context, accessToken string) error
+	GetAccessTokenClaims(ctx context.Context, accessToken string) (*service.AccessTokenClaims, error)
+	Refresh(ctx context.Context, refreshToken string) (*domain.JWTTokens, error)
+}
 
 type loginForm struct {
 	Login    string `json:"login" validate:"required"`
@@ -68,6 +78,36 @@ func unsetTokenFromCookie(w http.ResponseWriter, cookieConfig config.CookieConfi
 
 	http.SetCookie(w, cookieAccessToken)
 	http.SetCookie(w, cookieRefreshToken)
+}
+
+func (a *API) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		token, err := r.Cookie(cookieAccessTokenName)
+		if err != nil {
+			SendBaseResponse[any](w, 401, err.Error(), true, nil)
+			return
+		} else if token == nil {
+			SendBaseResponse[any](w, 401, domain.ErrEmptyObject.Error(), true, nil)
+			return
+		}
+
+		tokenData, err := a.auth.GetAccessTokenClaims(r.Context(), token.Value)
+		if err != nil {
+			SendBaseResponse[any](w, 401, err.Error(), true, nil)
+			return
+		}
+
+		userSystemInfo := domain.UserSystemInfo{
+			UUID:     tokenData.Subject,
+			UserRole: tokenData.UserRole,
+			Scope:    tokenData.Scope,
+		}
+
+		// TODO проверка на прова по Scope
+
+		ctx := context.WithValue(r.Context(), "user", userSystemInfo)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (a *API) userLoginHTTP(w http.ResponseWriter, r *http.Request) {

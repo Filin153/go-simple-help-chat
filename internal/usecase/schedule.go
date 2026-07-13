@@ -75,10 +75,10 @@ func (s *ScheduleUseCase) GenerateBaseSchedule(ctx context.Context, user domain.
 		return []domain.CreateSchedule{}, nil
 	}
 
-	res := make([]domain.CreateSchedule, 0, 365)
-	now := time.Now().UTC()
-	scheduleDate := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	for range 365 {
+	res := make([]domain.CreateSchedule, 0, 366)
+	// now := time.Now().UTC()
+	scheduleDate := time.Date(0000, 0, 0, 0, 0, 0, 0, time.UTC)
+	for range 366 {
 		day := scheduleDate.Weekday()
 
 		item := domain.CreateSchedule{
