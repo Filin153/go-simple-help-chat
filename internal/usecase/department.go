@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"shc/domain"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -22,7 +21,7 @@ type ScheduleUseCaseInterface interface {
 
 type ScheduleRepoForDepartment interface {
 	Create(ctx context.Context, createSchedule *domain.CreateSchedule, tx pgx.Tx) error
-	GetFromTo(ctx context.Context, departmentID int, from, to time.Time, tx pgx.Tx) ([]domain.Schedule, error)
+	GetByMonth(ctx context.Context, departmentID, month int, tx pgx.Tx) ([]domain.Schedule, error)
 }
 
 type DepartmentUseCase struct {
@@ -91,9 +90,7 @@ func (d *DepartmentUseCase) GetByID(ctx context.Context, user domain.UserSystemI
 }
 
 func (d *DepartmentUseCase) GetSheduleById(ctx context.Context, user domain.UserSystemInfo, id int, month int) ([]domain.Schedule, error) {
-	from := time.Date(1, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
-	to := time.Date(1, time.Month(month)+1, 0, 23, 59, 59, 999999999, time.UTC)
-	return d.scheduleRepo.GetFromTo(ctx, id, from, to, nil)
+	return d.scheduleRepo.GetByMonth(ctx, id, month, nil)
 }
 
 func (d *DepartmentUseCase) Update(ctx context.Context, user domain.UserSystemInfo, id int, updateDepartment domain.UpdateDepartment) error {

@@ -10,8 +10,9 @@ import (
 
 type ScheduleRepo interface {
 	Create(ctx context.Context, createSchedule *domain.CreateSchedule, tx pgx.Tx) error
-	Update(ctx context.Context, updateSchedule *domain.UpdateSchedule, tx pgx.Tx) error
-	Delete(ctx context.Context, id int, tx pgx.Tx) error
+	CreateEvent(ctx context.Context, scheduleID int, event *domain.CreateScheduleEvent, tx pgx.Tx) error
+	UpdateEvent(ctx context.Context, scheduleID int, event *domain.UpdateScheduleEvent, tx pgx.Tx) error
+	DeleteEvent(ctx context.Context, scheduleID, eventID int, tx pgx.Tx) error
 	ExistByDepartmentID(ctx context.Context, departmentID int) (bool, error)
 }
 
@@ -27,9 +28,12 @@ func NewScheduleUseCase(mainRepo MainRepo, scheduleRepo ScheduleRepo) *ScheduleU
 	}
 }
 
-func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, editSchedule []domain.UpdateSchedule) error {
+func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, editSchedule domain.UpdateSchedule) error {
 	if user.UserRole != domain.UserRoleAdmin {
 		return domain.ErrAccess
+	}
+	if len(editSchedule.Create) == 0 && len(editSchedule.Update) == 0 && len(editSchedule.Delete) == 0 {
+		return domain.ErrEmptyObject
 	}
 
 	tx, err := s.mainRepo.CreateSession(ctx, pgx.TxOptions{})
@@ -38,8 +42,21 @@ func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, 
 	}
 	defer tx.Rollback(ctx)
 
-	for _, item := range editSchedule {
-		if err := s.scheduleRepo.Update(ctx, &item, tx); err != nil {
+	for i := range editSchedule.Create {
+		event := editSchedule.Create[i]
+		createEvent := domain.CreateScheduleEvent{Type: event.Type, From: event.From, To: event.To}
+		if err := s.scheduleRepo.CreateEvent(ctx, event.ScheduleID, &createEvent, tx); err != nil {
+			return err
+		}
+	}
+	for i := range editSchedule.Update {
+		event := &editSchedule.Update[i]
+		if err := s.scheduleRepo.UpdateEvent(ctx, event.ScheduleID, event, tx); err != nil {
+			return err
+		}
+	}
+	for _, event := range editSchedule.Delete {
+		if err := s.scheduleRepo.DeleteEvent(ctx, event.ScheduleID, event.ID, tx); err != nil {
 			return err
 		}
 	}
@@ -67,19 +84,21 @@ func (s *ScheduleUseCase) GenerateBaseSchedule(ctx context.Context, user domain.
 	scheduleDate := time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
 	for scheduleDate.Year() == 1 {
 		day := scheduleDate.Weekday()
-
+		workFrom, workTo := "09:00:00", "18:00:00"
+		breakFrom, breakTo := "13:00:00", "14:00:00"
 		item := domain.CreateSchedule{
 			DepartmentID: departmentID,
+			Month:        int(scheduleDate.Month()),
+			Day:          scheduleDate.Day(),
 			Name:         day.String(),
-			WorkFrom:     scheduleDate.Add(time.Hour * 9),
-			WorkTo:       scheduleDate.Add(time.Hour * 18),
-			BreakFrom:    scheduleDate.Add(time.Hour * 13),
-			BreakTo:      scheduleDate.Add(time.Hour * 14),
-			IsWeekEnd:    false,
+			Events: []domain.CreateScheduleEvent{
+				{Type: domain.ScheduleEventWorkTime, From: &workFrom, To: &workTo},
+				{Type: domain.ScheduleEventBreak, From: &breakFrom, To: &breakTo},
+			},
 		}
 
 		if day == time.Saturday || day == time.Sunday {
-			item.IsWeekEnd = true
+			item.Events = []domain.CreateScheduleEvent{{Type: domain.ScheduleEventDayOff}}
 		}
 
 		res = append(res, item)

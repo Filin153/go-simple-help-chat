@@ -72,6 +72,8 @@ func (a *API) setup() {
 			r.Get("/", a.departmentGetAll)
 			r.Get("/{id}", a.departmentGetByID)
 			r.Put("/{id}", a.departmentUpdate)
+			r.Get("/{id}/schedule", a.departmentGetSheduleById)
+			// Deprecated misspelled route kept for backward compatibility.
 			r.Get("/{id}/shedule", a.departmentGetSheduleById)
 			r.Patch("/{id}", a.departmentUpdate)
 			r.Delete("/{id}", a.departmentDelete)

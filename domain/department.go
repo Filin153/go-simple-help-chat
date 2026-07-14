@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 type Department struct {
 	ID      int    `db:"id" json:"id"`
 	Name    string `db:"name" json:"name"`
@@ -18,10 +16,8 @@ type UpdateDepartment struct {
 }
 
 type DepartmentWithOnScheduleeDay struct {
-	ID        int       `db:"id" json:"id"`
-	Name      string    `db:"name" json:"name"`
-	Default   bool      `db:"default_dep" json:"default_dep"`
-	WorkFrom  time.Time `db:"work_from" json:"work_from"`
-	WorkTo    time.Time `db:"work_to" json:"work_to"`
-	IsWeekEnd bool      `db:"is_week_end" json:"is_week_end"`
+	ID       int       `json:"id"`
+	Name     string    `json:"name"`
+	Default  bool      `json:"default_dep"`
+	Schedule *Schedule `json:"schedule,omitempty"`
 }

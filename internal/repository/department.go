@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"shc/domain"
 	"shc/internal/service"
 
@@ -29,45 +30,39 @@ func (d *DepartmentRepo) Create(ctx context.Context, createDepartment domain.Cre
 }
 
 func (d *DepartmentRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error) {
-	const query = `SELECT
-	d."id",
-	d."name",
-	d."default_dep",
-	s."work_from",
-	s."work_to",
-	s."is_week_end"
-FROM "departments" AS d
-JOIN LATERAL (
-	SELECT
-		"work_from",
-		"work_to",
-		"is_week_end"
-	FROM "schedules"
-	WHERE "department_id" = d."id"
-	ORDER BY
-		CASE
-			WHEN EXTRACT(MONTH FROM "work_from") = EXTRACT(MONTH FROM CURRENT_DATE)
-				AND EXTRACT(DAY FROM "work_from") = EXTRACT(DAY FROM CURRENT_DATE)
-			THEN 0
-			ELSE 1
-		END,
-		"work_from" ASC,
-		"id" ASC
-	LIMIT 1
-) AS s ON TRUE
-ORDER BY d."id" ASC
-LIMIT $1 OFFSET $2;`
+	const query = `SELECT d.id,d.name,d.default_dep,
+		CASE WHEN s.id IS NULL THEN NULL ELSE jsonb_build_object(
+			'id',s.id,'department_id',s.department_id,'month',s.month,'day',s.day,'name',s.name,
+			'events',COALESCE((SELECT jsonb_agg(jsonb_build_object(
+				'id',e.id,'schedule_id',e.schedule_id,'type',e.type,
+				'from',e.time_from::text,'to',e.time_to::text) ORDER BY e.time_from NULLS FIRST,e.id)
+				FROM schedule_events e WHERE e.schedule_id=s.id),'[]'::jsonb)) END
+	FROM departments d
+	LEFT JOIN schedules s ON s.department_id=d.id
+		AND s.month=EXTRACT(MONTH FROM CURRENT_DATE)::int AND s.day=EXTRACT(DAY FROM CURRENT_DATE)::int
+	ORDER BY d.id LIMIT $1 OFFSET $2`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	res, err := pgx.CollectRows(rows, pgx.RowToStructByName[domain.DepartmentWithOnScheduleeDay])
-	if err != nil {
-		return nil, err
+	res := make([]domain.DepartmentWithOnScheduleeDay, 0)
+	for rows.Next() {
+		var item domain.DepartmentWithOnScheduleeDay
+		var raw []byte
+		if err := rows.Scan(&item.ID, &item.Name, &item.Default, &raw); err != nil {
+			return nil, err
+		}
+		if raw != nil {
+			item.Schedule = &domain.Schedule{}
+			if err := json.Unmarshal(raw, item.Schedule); err != nil {
+				return nil, err
+			}
+		}
+		res = append(res, item)
 	}
-	return res, nil
+	return res, rows.Err()
 }
 
 func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (*domain.Department, error) {
