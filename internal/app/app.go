@@ -73,7 +73,7 @@ func NewApp(ctx context.Context, cfg config.Config) (*App, error) {
 	// ticketUseCase := usecase.NewTicketUseCase(ticketRepo)
 	departmentUseCase := usecase.NewDepartmentUseCase(baseRepo, departmentRepo, scheduleUseCase, scheduleRepo)
 	chatUseCase := usecase.NewChatUseCase(msgCache, s3Storage, msgRepo, baseRepo, encryptionService, cfg.Chat.ReadTimeout, cfg.Chat.PollInterval)
-	api := http.NewAPI(authUseCase, departmentUseCase, scheduleUseCase, cfg.HTTP)
+	api := http.NewAPI(authUseCase, userUseCase, departmentUseCase, scheduleUseCase, cfg.HTTP)
 
 	app := App{
 		cfg:               &cfg,

@@ -15,13 +15,14 @@ type API struct {
 	router     *chi.Mux
 	server     *http.Server
 	auth       AuthInterface
+	user       UserInterface
 	department DepartmentInterface
 	schedule   ScheduleInterface
 	config     config.HTTPConfig
 	validator  *validator.Validate
 }
 
-func NewAPI(auth AuthInterface, department DepartmentInterface, schedule ScheduleInterface, httpConfig config.HTTPConfig) *API {
+func NewAPI(auth AuthInterface, user UserInterface, department DepartmentInterface, schedule ScheduleInterface, httpConfig config.HTTPConfig) *API {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(cors.Handler(cors.Options{
@@ -42,6 +43,7 @@ func NewAPI(auth AuthInterface, department DepartmentInterface, schedule Schedul
 		config:     httpConfig,
 		validator:  validator.New(validator.WithRequiredStructEnabled()),
 		auth:       auth,
+		user:       user,
 		department: department,
 		schedule:   schedule,
 	}
@@ -77,6 +79,15 @@ func (a *API) setup() {
 			r.Get("/{id}/shedule", a.departmentGetSheduleById)
 			r.Patch("/{id}", a.departmentUpdate)
 			r.Delete("/{id}", a.departmentDelete)
+		})
+		r.Route("/user", func(r chi.Router) {
+			r.Use(a.authMiddleware)
+			r.Get("/", a.userGetAll)
+			r.Get("/{uuid}", a.userGetByUUID)
+			r.Post("/manager", a.userCreateManager)
+			r.Post("/admin", a.userCreateAdmin)
+			r.Patch("/{uuid}", a.userUpdate)
+			r.Delete("/{uuid}", a.userDelete)
 		})
 		r.Route("/schedule", func(r chi.Router) {
 			r.Use(a.authMiddleware)

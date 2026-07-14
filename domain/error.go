@@ -14,4 +14,5 @@ var (
 	ErrEmptyObject          error = errors.New("Пустой объект")
 	ErrZeroRowAffected      error = errors.New("Неудалось найти объекты и выполнить действие")
 	ErrAccess               error = errors.New("Недостаточно прав")
+	ErrInvalidUserRole      error = errors.New("Допустимые роли для фильтра: admin, manager")
 )

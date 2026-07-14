@@ -9,7 +9,7 @@ import (
 
 // UserRepo provides user CRUD operations.
 type UserRepo interface {
-	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error)
+	GetAll(ctx context.Context, page, limit int, filter domain.UserFilter, tx pgx.Tx) ([]domain.User, error)
 	GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error)
 	GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error)
 	UpdateByUUID(ctx context.Context, uuid string, user domain.UpdateUser, tx pgx.Tx) error
@@ -40,20 +40,38 @@ func NewUserUseCase(mainRepo MainRepo, userRepo UserRepo, pswdService UserPswdSe
 }
 
 // GetAll returns all users.
-func (u *UserUseCase) GetAll(ctx context.Context, user domain.UserSystemInfo, page, limit int) ([]domain.User, error) {
+func (u *UserUseCase) GetAll(ctx context.Context, user domain.UserSystemInfo, page, limit int, filter domain.UserFilter) ([]domain.User, error) {
 	if user.UserRole != domain.UserRoleAdmin {
 		return nil, domain.ErrAccess
 	}
-	return u.userRepo.GetAll(ctx, page, limit, nil)
+	if limit > 100 {
+		return nil, domain.ErrLimitIsBiggerThen100
+	}
+	if filter.Role != "" && filter.Role != domain.UserRoleAdmin && filter.Role != domain.UserRoleManager {
+		return nil, domain.ErrInvalidUserRole
+	}
+	return u.userRepo.GetAll(ctx, page, limit, filter, nil)
 }
 
 // GetByUUID returns a user by UUID.
-func (u *UserUseCase) GetByUUID(ctx context.Context, uuid string) (*domain.User, error) {
+func (u *UserUseCase) GetByUUID(ctx context.Context, user domain.UserSystemInfo, uuid string) (*domain.User, error) {
+	if user.UserRole != domain.UserRoleAdmin {
+		return nil, domain.ErrAccess
+	}
 	return u.userRepo.GetByUUID(ctx, uuid, nil)
 }
 
 // GetByLogin returns a user by login.
 func (u *UserUseCase) GetByLogin(ctx context.Context, login string) (*domain.User, error) {
+	return u.userRepo.GetByLogin(ctx, login, nil)
+}
+
+// GetByLoginForAdmin exposes login lookup to the administrative API while
+// keeping GetByLogin available for application startup.
+func (u *UserUseCase) GetByLoginForAdmin(ctx context.Context, user domain.UserSystemInfo, login string) (*domain.User, error) {
+	if user.UserRole != domain.UserRoleAdmin {
+		return nil, domain.ErrAccess
+	}
 	return u.userRepo.GetByLogin(ctx, login, nil)
 }
 
@@ -81,12 +99,14 @@ func (u *UserUseCase) CreateManager(ctx context.Context, user domain.UserSystemI
 	}
 	defer tx.Rollback(ctx)
 
-	craeeteErr := u.userRepo.CreateManager(ctx, manager, tx)
+	if err := u.userRepo.CreateManager(ctx, manager, tx); err != nil {
+		return err
+	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
-	return craeeteErr
+	return nil
 }
 
 func (u *UserUseCase) CreateAdmin(ctx context.Context, user domain.UserSystemInfo, admin domain.CreateUser) error {

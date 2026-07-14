@@ -19,12 +19,14 @@ func NewUserRepo(repo *Repository) *UserRepo {
 	}
 }
 
-func (u *UserRepo) GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.User, error) {
-	const query = `SELECT "uuid", "login", "password", "role"
-FROM "users"
-ORDER BY "uuid" ASC
-LIMIT $1 OFFSET $2;`
-	rows, err := u.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit))
+func (u *UserRepo) GetAll(ctx context.Context, page, limit int, filter domain.UserFilter, tx pgx.Tx) ([]domain.User, error) {
+	const query = `SELECT u.uuid,u.login,u.password,u.role,m.name,m.department_id
+		FROM users u LEFT JOIN managers m ON m.user_uuid=u.uuid
+		WHERE u.role <> 'client'
+		AND ($3 = '' OR u.role::text = $3)
+		AND ($4 = '' OR (u.role = 'manager' AND m.name ILIKE '%' || $4 || '%'))
+		ORDER BY u.uuid ASC LIMIT $1 OFFSET $2`
+	rows, err := u.repo.GetDB(tx).Query(ctx, query, limit, getOffset(page, limit), filter.Role, filter.Search)
 	if err != nil {
 		return []domain.User{}, err
 	}
@@ -39,7 +41,8 @@ LIMIT $1 OFFSET $2;`
 }
 
 func (u *UserRepo) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*domain.User, error) {
-	const query = `SELECT "uuid", "login", "password", "role" FROM "users" WHERE "uuid"=$1;`
+	const query = `SELECT u.uuid,u.login,u.password,u.role,m.name,m.department_id
+		FROM users u LEFT JOIN managers m ON m.user_uuid=u.uuid WHERE u.uuid=$1`
 	rows, err := u.repo.GetDB(tx).Query(ctx, query, uuid)
 	if err != nil {
 		return nil, err
@@ -55,7 +58,8 @@ func (u *UserRepo) GetByUUID(ctx context.Context, uuid string, tx pgx.Tx) (*doma
 }
 
 func (u *UserRepo) GetByLogin(ctx context.Context, login string, tx pgx.Tx) (*domain.User, error) {
-	const query = `SELECT "uuid", "login", "password", "role" FROM "users" WHERE "login"=$1;`
+	const query = `SELECT u.uuid,u.login,u.password,u.role,m.name,m.department_id
+		FROM users u LEFT JOIN managers m ON m.user_uuid=u.uuid WHERE u.login=$1`
 	rows, err := u.repo.GetDB(tx).Query(ctx, query, login)
 	if err != nil {
 		return nil, err
