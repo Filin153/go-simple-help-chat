@@ -170,11 +170,29 @@ BEGIN
     END IF;
 
     IF NEW.default_dep AND NEW.default_dep IS DISTINCT FROM OLD.default_dep THEN
-        RAISE EXCEPTION 'default_dep can be true only on insert into an empty departments table'
-            USING ERRCODE = '23514';
+        UPDATE departments
+        SET default_dep = FALSE
+        WHERE id <> NEW.id
+          AND default_dep;
     END IF;
 
     RETURN NEW;
+END;
+$$;
+-- +goose StatementEnd
+
+-- +goose StatementBegin
+CREATE OR REPLACE FUNCTION protect_default_department_delete()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF OLD.default_dep THEN
+        RAISE EXCEPTION 'default department % cannot be deleted', OLD.id
+            USING ERRCODE = '23514';
+    END IF;
+
+    RETURN OLD;
 END;
 $$;
 -- +goose StatementEnd
@@ -342,6 +360,11 @@ CREATE TRIGGER departments_set_default_dep
     FOR EACH ROW
     EXECUTE FUNCTION set_department_default_dep();
 
+CREATE TRIGGER departments_protect_default_delete
+    BEFORE DELETE ON departments
+    FOR EACH ROW
+    EXECUTE FUNCTION protect_default_department_delete();
+
 CREATE TRIGGER managers_set_update_at
     BEFORE UPDATE ON managers
     FOR EACH ROW
@@ -397,6 +420,7 @@ DROP TRIGGER IF EXISTS managers_assert_user_role ON managers;
 DROP TRIGGER IF EXISTS tickets_set_update_at ON tickets;
 DROP TRIGGER IF EXISTS schedules_set_update_at ON schedules;
 DROP TRIGGER IF EXISTS managers_set_update_at ON managers;
+DROP TRIGGER IF EXISTS departments_protect_default_delete ON departments;
 DROP TRIGGER IF EXISTS departments_set_default_dep ON departments;
 DROP TRIGGER IF EXISTS departments_set_update_at ON departments;
 DROP TRIGGER IF EXISTS users_set_update_at ON users;
@@ -409,6 +433,7 @@ DROP FUNCTION IF EXISTS touch_ticket_update_at_from_message();
 DROP FUNCTION IF EXISTS validate_ticket_manager_department();
 DROP FUNCTION IF EXISTS protect_user_role_change();
 DROP FUNCTION IF EXISTS assert_user_role();
+DROP FUNCTION IF EXISTS protect_default_department_delete();
 DROP FUNCTION IF EXISTS set_department_default_dep();
 DROP FUNCTION IF EXISTS set_update_at();
 

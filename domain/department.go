@@ -13,7 +13,8 @@ type CreateDepartment struct {
 }
 
 type UpdateDepartment struct {
-	Name string `json:"name" validate:"required"`
+	Name    string `json:"name"`
+	Default bool   `json:"default_dep"`
 }
 
 type DepartmentWithOnScheduleeDay struct {

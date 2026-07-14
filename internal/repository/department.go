@@ -71,7 +71,7 @@ LIMIT $1 OFFSET $2;`
 }
 
 func (d *DepartmentRepo) GetByID(ctx context.Context, id int, tx pgx.Tx) (*domain.Department, error) {
-	const query = `SELECT * FROM "departments" WHERE "id"=$1;`
+	const query = `SELECT "id", "name", "default_dep" FROM "departments" WHERE "id"=$1;`
 	rows, err := d.repo.GetDB(tx).Query(ctx, query, id)
 	if err != nil {
 		return nil, err
@@ -101,6 +101,15 @@ func (d *DepartmentRepo) Update(ctx context.Context, id int, updateDepartment do
 	}
 	if tag.RowsAffected() == 0 {
 		return domain.ErrUnknownObject
+	}
+	return nil
+}
+
+func (d *DepartmentRepo) Delete(ctx context.Context, id int) error {
+	const query = `DELETE FROM "departments" WHERE "id"=$1`
+	_, err := d.repo.GetDB(nil).Exec(ctx, query, id)
+	if err != nil {
+		return err
 	}
 	return nil
 }

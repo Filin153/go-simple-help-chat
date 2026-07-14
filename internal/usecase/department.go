@@ -13,6 +13,7 @@ type DepartmentRepo interface {
 	GetAll(ctx context.Context, page, limit int, tx pgx.Tx) ([]domain.DepartmentWithOnScheduleeDay, error)
 	GetByID(ctx context.Context, id int, tx pgx.Tx) (*domain.Department, error)
 	Update(ctx context.Context, id int, updateDepartment domain.UpdateDepartment, tx pgx.Tx) error
+	Delete(ctx context.Context, id int) error
 }
 
 type ScheduleUseCaseInterface interface {
@@ -89,10 +90,9 @@ func (d *DepartmentUseCase) GetByID(ctx context.Context, user domain.UserSystemI
 	return d.departmentRepo.GetByID(ctx, id, nil)
 }
 
-func (d *DepartmentUseCase) GetSheduleById(ctx context.Context, user domain.UserSystemInfo, id int, from, to time.Time) ([]domain.Schedule, error) {
-	if to.Sub(from) > oneMonthDuration {
-		return nil, domain.ErrDurationFromTo
-	}
+func (d *DepartmentUseCase) GetSheduleById(ctx context.Context, user domain.UserSystemInfo, id int, month int) ([]domain.Schedule, error) {
+	from := time.Date(1, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
+	to := time.Date(1, time.Month(month)+1, 0, 23, 59, 59, 999999999, time.UTC)
 	return d.scheduleRepo.GetFromTo(ctx, id, from, to, nil)
 }
 
@@ -101,4 +101,11 @@ func (d *DepartmentUseCase) Update(ctx context.Context, user domain.UserSystemIn
 		return domain.ErrAccess
 	}
 	return d.departmentRepo.Update(ctx, id, updateDepartment, nil)
+}
+
+func (d *DepartmentUseCase) Delete(ctx context.Context, user domain.UserSystemInfo, id int) error {
+	if user.UserRole != domain.UserRoleAdmin {
+		return domain.ErrAccess
+	}
+	return d.departmentRepo.Delete(ctx, id)
 }

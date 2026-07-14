@@ -68,6 +68,11 @@ func (a *API) setup() {
 			r.Use(a.authMiddleware)
 			r.Post("/", a.departmentCreate)
 			r.Get("/", a.departmentGetAll)
+			r.Get("/{id}", a.departmentGetByID)
+			r.Put("/{id}", a.departmentUpdate)
+			r.Get("/{id}/shedule", a.departmentGetSheduleById)
+			r.Patch("/{id}", a.departmentUpdate)
+			r.Delete("/{id}", a.departmentDelete)
 		})
 	})
 }
