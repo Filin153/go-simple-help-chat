@@ -16,11 +16,12 @@ type API struct {
 	server     *http.Server
 	auth       AuthInterface
 	department DepartmentInterface
+	schedule   ScheduleInterface
 	config     config.HTTPConfig
 	validator  *validator.Validate
 }
 
-func NewAPI(auth AuthInterface, department DepartmentInterface, httpConfig config.HTTPConfig) *API {
+func NewAPI(auth AuthInterface, department DepartmentInterface, schedule ScheduleInterface, httpConfig config.HTTPConfig) *API {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(cors.Handler(cors.Options{
@@ -42,6 +43,7 @@ func NewAPI(auth AuthInterface, department DepartmentInterface, httpConfig confi
 		validator:  validator.New(validator.WithRequiredStructEnabled()),
 		auth:       auth,
 		department: department,
+		schedule:   schedule,
 	}
 	api.setup()
 
@@ -73,6 +75,10 @@ func (a *API) setup() {
 			r.Get("/{id}/shedule", a.departmentGetSheduleById)
 			r.Patch("/{id}", a.departmentUpdate)
 			r.Delete("/{id}", a.departmentDelete)
+		})
+		r.Route("/schedule", func(r chi.Router) {
+			r.Use(a.authMiddleware)
+			r.Patch("/", a.scheduleEdit)
 		})
 	})
 }

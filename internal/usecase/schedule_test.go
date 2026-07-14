@@ -92,7 +92,7 @@ func Test_ScheduleUseCase_Edit_CreateSessionError(t *testing.T) {
 		return nil, wantErr
 	}
 
-	err := f.useCase.Edit(context.Background(), domain.EditSchedule{})
+	err := f.useCase.Edit(context.Background(), []domain.UpdateSchedule{})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected create session error, got=%v", err)
 	}
@@ -111,7 +111,7 @@ func Test_ScheduleUseCase_Edit_UpdateError(t *testing.T) {
 		return wantErr
 	}
 
-	err := f.useCase.Edit(context.Background(), domain.EditSchedule{
+	err := f.useCase.Edit(context.Background(), []domain.UpdateSchedule{
 		Update: []domain.UpdateSchedule{{ID: 10, Name: "monday"}},
 	})
 	if !errors.Is(err, wantErr) {
@@ -140,7 +140,7 @@ func Test_ScheduleUseCase_Edit_CreateError(t *testing.T) {
 		return wantErr
 	}
 
-	err := f.useCase.Edit(context.Background(), domain.EditSchedule{
+	err := f.useCase.Edit(context.Background(), []domain.UpdateSchedule{
 		Update: []domain.UpdateSchedule{{ID: 1}},
 		Create: []domain.CreateSchedule{{DepartmentID: 5}},
 	})
@@ -173,7 +173,7 @@ func Test_ScheduleUseCase_Edit_DeleteError(t *testing.T) {
 		return wantErr
 	}
 
-	err := f.useCase.Edit(context.Background(), domain.EditSchedule{
+	err := f.useCase.Edit(context.Background(), []domain.UpdateSchedule{
 		Create: []domain.CreateSchedule{{DepartmentID: 1}},
 		Delete: []int{7},
 	})
@@ -190,7 +190,7 @@ func Test_ScheduleUseCase_Edit_CommitError(t *testing.T) {
 	wantErr := errors.New("commit error")
 	f.tx.commitErr = wantErr
 
-	err := f.useCase.Edit(context.Background(), domain.EditSchedule{})
+	err := f.useCase.Edit(context.Background(), []domain.UpdateSchedule{})
 	if !errors.Is(err, wantErr) {
 		t.Fatalf("expected commit error, got=%v", err)
 	}
@@ -221,7 +221,7 @@ func Test_ScheduleUseCase_Edit_OK(t *testing.T) {
 		return nil
 	}
 
-	err := f.useCase.Edit(context.Background(), domain.EditSchedule{
+	err := f.useCase.Edit(context.Background(), []domain.UpdateSchedule{
 		Update: []domain.UpdateSchedule{{ID: 1, Name: "update"}},
 		Create: []domain.CreateSchedule{{DepartmentID: 2, Name: "create"}},
 		Delete: []int{3},

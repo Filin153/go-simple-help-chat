@@ -27,7 +27,7 @@ func NewScheduleUseCase(mainRepo MainRepo, scheduleRepo ScheduleRepo) *ScheduleU
 	}
 }
 
-func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, editSchedule domain.EditSchedule) error {
+func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, editSchedule []domain.UpdateSchedule) error {
 	if user.UserRole != domain.UserRoleAdmin {
 		return domain.ErrAccess
 	}
@@ -38,20 +38,8 @@ func (s *ScheduleUseCase) Edit(ctx context.Context, user domain.UserSystemInfo, 
 	}
 	defer tx.Rollback(ctx)
 
-	for _, item := range editSchedule.Update {
+	for _, item := range editSchedule {
 		if err := s.scheduleRepo.Update(ctx, &item, tx); err != nil {
-			return err
-		}
-	}
-
-	for _, item := range editSchedule.Create {
-		if err := s.scheduleRepo.Create(ctx, &item, tx); err != nil {
-			return err
-		}
-	}
-
-	for _, id := range editSchedule.Delete {
-		if err := s.scheduleRepo.Delete(ctx, id, tx); err != nil {
 			return err
 		}
 	}

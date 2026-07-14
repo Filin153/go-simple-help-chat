@@ -4,11 +4,6 @@ import (
 	"time"
 )
 
-type EditSchedule struct {
-	Create []CreateSchedule `json:"create"`
-	Update []UpdateSchedule `json:"update"`
-	Delete []int            `json:"delete"`
-}
 
 type CreateSchedule struct {
 	DepartmentID int       `json:"department_id" validate:"required"`
